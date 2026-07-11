@@ -1,0 +1,140 @@
+@import "tailwindcss";
+
+:root {
+  /* Ink — the desk the ledger sits on */
+  --color-ink-950: #0f1813;
+  --color-ink-900: #14201b;
+  --color-ink-800: #1c2c25;
+  --color-ink-700: #263a30;
+  --color-ink-600: #34503f;
+
+  /* Paper — the ledger sheet itself */
+  --color-paper-100: #faf7ee;
+  --color-paper-200: #f6f1e4;
+  --color-paper-300: #ede6d3;
+  --color-paper-400: #ddd2b4;
+
+  /* Brass — primary accent, treasury / coin */
+  --color-brass-300: #e0c164;
+  --color-brass-400: #c9a227;
+  --color-brass-500: #a8841e;
+  --color-brass-600: #8c6f1f;
+
+  /* Moss — healthy stock */
+  --color-moss-400: #5c8a6c;
+  --color-moss-500: #45664f;
+
+  /* Rust — low / empty stock, the "stamped in red ink" state */
+  --color-rust-400: #c25139;
+  --color-rust-500: #a63d2f;
+  --color-rust-600: #7a2c22;
+
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-body: "Public Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Space Mono", ui-monospace, "SF Mono", monospace;
+}
+
+@theme inline {
+  --color-ink-950: var(--color-ink-950);
+  --color-ink-900: var(--color-ink-900);
+  --color-ink-800: var(--color-ink-800);
+  --color-ink-700: var(--color-ink-700);
+  --color-ink-600: var(--color-ink-600);
+
+  --color-paper-100: var(--color-paper-100);
+  --color-paper-200: var(--color-paper-200);
+  --color-paper-300: var(--color-paper-300);
+  --color-paper-400: var(--color-paper-400);
+
+  --color-brass-300: var(--color-brass-300);
+  --color-brass-400: var(--color-brass-400);
+  --color-brass-500: var(--color-brass-500);
+  --color-brass-600: var(--color-brass-600);
+
+  --color-moss-400: var(--color-moss-400);
+  --color-moss-500: var(--color-moss-500);
+
+  --color-rust-400: var(--color-rust-400);
+  --color-rust-500: var(--color-rust-500);
+  --color-rust-600: var(--color-rust-600);
+
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-mono: var(--font-mono);
+}
+
+* {
+  border-color: var(--color-ink-700);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-ink-900);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(201, 162, 39, 0.08), transparent),
+    repeating-linear-gradient(
+      transparent,
+      transparent 27px,
+      rgba(255, 255, 255, 0.015) 28px
+    );
+  color: var(--color-paper-200);
+  font-family: var(--font-body);
+}
+
+::selection {
+  background: var(--color-brass-400);
+  color: var(--color-ink-950);
+}
+
+/* Focus ring — visible, on-brand, never removed */
+:focus-visible {
+  outline: 2px solid var(--color-brass-400);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Ruled paper texture for ledger panels */
+.ledger-sheet {
+  background-color: var(--color-paper-200);
+  background-image: repeating-linear-gradient(
+    transparent,
+    transparent 43px,
+    rgba(38, 58, 48, 0.09) 44px
+  );
+  color: var(--color-ink-900);
+}
+
+/* The signature element: a hand-stamped alert badge */
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+  padding: 0.15rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  transform: rotate(-1.5deg);
+  position: relative;
+}
+
+.stamp::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
