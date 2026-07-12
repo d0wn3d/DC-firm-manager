@@ -11,7 +11,7 @@ export default async function SettingsPage() {
   return (
     <main className="mx-auto min-h-screen max-w-lg px-6 py-12">
       <Link
-        href="/dashboard"
+        href="/dashboard/inventory"
         className="mb-8 inline-block font-mono text-xs tracking-wide text-paper-300/60 uppercase hover:text-paper-100"
       >
         ← Back to ledger

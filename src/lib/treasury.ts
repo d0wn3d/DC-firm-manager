@@ -58,6 +58,21 @@ export interface TreasuryShop {
   lastSeen: string | null;
 }
 
+export interface TreasuryItemDetail {
+  itemKey: string;
+  material: string | null;
+  itemName: string | null;
+  itemCustom: boolean;
+  windowDays: number;
+  tradeCount: number;
+  totalQuantity: number;
+  totalVolume: string;
+  avgUnitPrice: string | null;
+  activeShopCount: number;
+  cheapestShops: TreasuryShop[];
+  priceByDay: unknown[];
+}
+
 interface PagedResponse<T> {
   page: number;
   totalPages: number;
@@ -132,6 +147,16 @@ export function decodeJwtExpiry(jwt: string): Date | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * GET /chestshop/items/{itemKey} — server-wide trading stats for one item.
+ * `days=1` gets a genuine 24h window; `avgUnitPrice` is null/absent when
+ * `tradeCount` is 0 for that window, which is the actual signal to fall
+ * back to something else rather than trusting a stale or missing average.
+ */
+export async function getItemDetail(jwt: string, itemKey: string, days = 1): Promise<TreasuryItemDetail> {
+  return treasuryFetch(`/chestshop/items/${encodeURIComponent(itemKey)}`, jwt, { days });
 }
 
 /**

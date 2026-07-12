@@ -77,6 +77,8 @@ export interface Database {
           current_stock: number | null;
           stock_at: string | null;
           last_seen: string | null;
+          manual_stock: number | null;
+          manual_stock_at: string | null;
           low_stock_threshold: number | null;
           notes: string | null;
           last_alert_state: "ok" | "low" | "empty";
@@ -123,6 +125,38 @@ export interface Database {
         Relationships: [
           {
             foreignKeyName: "poll_log_firm_id_fkey";
+            columns: ["firm_id"];
+            isOneToOne: false;
+            referencedRelation: "firms";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      item_valuations: {
+        Row: {
+          firm_id: string;
+          item_key: string;
+          item_name: string | null;
+          unit_value: number | null;
+          value_source: "market_24h" | "own_shops_fallback" | "unavailable";
+          total_quantity: number;
+          total_value: number;
+          computed_at: string;
+        };
+        Insert: {
+          firm_id: string;
+          item_key: string;
+          item_name?: string | null;
+          unit_value?: number | null;
+          value_source?: "market_24h" | "own_shops_fallback" | "unavailable";
+          total_quantity?: number;
+          total_value?: number;
+          computed_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["item_valuations"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "item_valuations_firm_id_fkey";
             columns: ["firm_id"];
             isOneToOne: false;
             referencedRelation: "firms";

@@ -1,13 +1,17 @@
 -- Stockbook schema
 -- Run this once in the Supabase SQL editor for a fresh project.
 --
--- ALREADY RAN THIS BEFORE? You only need this one line, not the whole file
+-- ALREADY RAN THIS BEFORE? You only need these lines, not the whole file
 -- (the CREATE TABLEs below are IF NOT EXISTS and won't touch your existing
--- data, but they also won't add a column to a table that already exists):
+-- data, but they also won't add columns to tables that already exist):
 --
 --   alter table firms add column if not exists treasury_jwt_expires_at timestamptz;
 --   alter table shops alter column buy_price type text;
 --   alter table shops alter column sell_price type text;
+--   alter table shops add column if not exists manual_stock integer;
+--   alter table shops add column if not exists manual_stock_at timestamptz;
+--   (then re-run this whole file once — the item_valuations CREATE TABLE
+--   below is new and IF NOT EXISTS will just add it alongside your data)
 --
 -- Security model: every table below has RLS enabled with NO policies for
 -- the anon/authenticated roles. That's deliberate, not an oversight — the
@@ -58,6 +62,10 @@ create table if not exists shops (
   current_stock integer,
   stock_at timestamptz,
   last_seen timestamptz,
+  manual_stock integer,                      -- hand-entered override
+  manual_stock_at timestamptz,                -- when it was set — whichever of
+                                               -- (this) or (stock_at) is newer wins,
+                                               -- see effectiveStock() in lib/stock.ts
   low_stock_threshold integer,               -- null = no alert configured
   notes text,
   last_alert_state text not null default 'ok' check (last_alert_state in ('ok', 'low', 'empty')),
@@ -65,6 +73,19 @@ create table if not exists shops (
 );
 
 create index if not exists shops_firm_id_idx on shops (firm_id);
+
+create table if not exists item_valuations (
+  firm_id uuid not null references firms (id) on delete cascade,
+  item_key text not null,
+  item_name text,
+  unit_value numeric,                        -- null if genuinely unpriceable
+  value_source text not null default 'unavailable'
+    check (value_source in ('market_24h', 'own_shops_fallback', 'unavailable')),
+  total_quantity integer not null default 0,
+  total_value numeric not null default 0,
+  computed_at timestamptz not null default now(),
+  primary key (firm_id, item_key)
+);
 
 create table if not exists poll_log (
   id uuid primary key default gen_random_uuid(),
@@ -81,5 +102,6 @@ alter table firms enable row level security;
 alter table firm_members enable row level security;
 alter table shops enable row level security;
 alter table poll_log enable row level security;
+alter table item_valuations enable row level security;
 
 -- No policies added on purpose — see the note at the top of this file.

@@ -2,21 +2,13 @@ import "server-only";
 import { createServiceClient } from "./supabase/service";
 import { getFirmShops, rotateToken, TreasuryAuthError, type TreasuryShop } from "./treasury";
 import { sendStockAlert } from "./discord";
+import { effectiveStock, stateFor, SEVERITY, type AlertState } from "./stock";
+import { computeValuation } from "./valuation";
 import type { Database } from "./supabase/types";
 
 type FirmRow = Database["public"]["Tables"]["firms"]["Row"];
 
-const SEVERITY = { ok: 0, low: 1, empty: 2 } as const;
-type AlertState = keyof typeof SEVERITY;
-
 const ROTATE_IF_EXPIRING_WITHIN_MS = 24 * 60 * 60 * 1000; // rotate a day out, not at the wire
-
-function stateFor(currentStock: number | null, threshold: number | null): AlertState {
-  if (currentStock === null) return "ok";
-  if (currentStock <= 0) return "empty";
-  if (threshold !== null && currentStock <= threshold) return "low";
-  return "ok";
-}
 
 /**
  * Rotates the firm's Treasury JWT if it's within a day of expiring (or its
@@ -75,11 +67,15 @@ export async function pollFirm(firm: FirmRow): Promise<PollResult> {
     return { firmId: firm.id, success: false, shopsSynced: 0, error: message };
   }
 
-  // Existing thresholds + alert state, so we don't clobber user-set values
-  // and can tell whether a shop just crossed into worse territory.
+  // Existing thresholds + manual overrides + alert state, so we don't
+  // clobber user-set values and can tell whether a shop just crossed into
+  // worse territory. Note: manual_stock/manual_stock_at are deliberately
+  // NOT included in the upsert payload below — omitting them from a
+  // PostgREST upsert leaves whatever's already stored untouched, which is
+  // exactly what we want (the poll never overwrites a manual override).
   const { data: existingRows } = await db
     .from("shops")
-    .select("shop_id, low_stock_threshold, last_alert_state")
+    .select("shop_id, low_stock_threshold, last_alert_state, manual_stock, manual_stock_at")
     .eq("firm_id", firm.id);
 
   const existingById = new Map((existingRows ?? []).map((r) => [r.shop_id, r]));
@@ -87,7 +83,13 @@ export async function pollFirm(firm: FirmRow): Promise<PollResult> {
   const rowsToUpsert = shops.map((shop) => {
     const existing = existingById.get(shop.shopId);
     const threshold = existing?.low_stock_threshold ?? null;
-    const newState = stateFor(shop.currentStock, threshold);
+    const effective = effectiveStock({
+      current_stock: shop.currentStock,
+      stock_at: shop.stockAt,
+      manual_stock: existing?.manual_stock ?? null,
+      manual_stock_at: existing?.manual_stock_at ?? null,
+    });
+    const newState = stateFor(effective.value, threshold);
 
     return {
       shop_id: shop.shopId,
@@ -136,7 +138,13 @@ export async function pollFirm(firm: FirmRow): Promise<PollResult> {
     for (const shop of shops) {
       const existing = existingById.get(shop.shopId);
       const oldState = (existing?.last_alert_state as AlertState) ?? "ok";
-      const newState = stateFor(shop.currentStock, existing?.low_stock_threshold ?? null);
+      const effective = effectiveStock({
+        current_stock: shop.currentStock,
+        stock_at: shop.stockAt,
+        manual_stock: existing?.manual_stock ?? null,
+        manual_stock_at: existing?.manual_stock_at ?? null,
+      });
+      const newState = stateFor(effective.value, existing?.low_stock_threshold ?? null);
 
       if (newState !== "ok" && SEVERITY[newState] > SEVERITY[oldState]) {
         try {
@@ -151,6 +159,22 @@ export async function pollFirm(firm: FirmRow): Promise<PollResult> {
 
   if (firm.jwt_invalid) {
     await db.from("firms").update({ jwt_invalid: false }).eq("id", firm.id);
+  }
+
+  // Valuation reads the just-upserted rows back (rather than reusing
+  // rowsToUpsert in memory) so it sees the real stored manual_stock values
+  // too, not just what this poll cycle wrote.
+  const { data: freshShops } = await db.from("shops").select("*").eq("firm_id", firm.id);
+  if (freshShops && freshShops.length > 0) {
+    try {
+      const { lines } = await computeValuation(jwt, firm.id, freshShops);
+      if (lines.length > 0) {
+        await db.from("item_valuations").upsert(lines, { onConflict: "firm_id,item_key" });
+      }
+    } catch {
+      // Valuation is supplementary — a failure here shouldn't mark the
+      // whole poll (stock sync, which is the important part) as failed.
+    }
   }
 
   await db.from("poll_log").insert({

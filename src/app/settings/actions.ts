@@ -74,6 +74,6 @@ export async function reconnectJwt(
 
   if (error) return { ...empty, error: error.message };
   revalidatePath("/settings");
-  revalidatePath("/dashboard");
+  revalidatePath("/dashboard", "layout");
   return { ...empty, success: "Token updated — syncing will resume on the next cycle." };
 }
