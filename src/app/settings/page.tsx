@@ -43,6 +43,13 @@ export default async function SettingsPage() {
               <span className="text-rust-500">
                 Expired or revoked — syncing is paused until you replace it.
               </span>
+            ) : session.firm.treasury_jwt_expires_at ? (
+              <>
+                Rotates automatically about a day before it expires (currently
+                good until{" "}
+                {new Date(session.firm.treasury_jwt_expires_at).toLocaleString()}
+                ). Only replace it manually if syncing stops working.
+              </>
             ) : (
               "Re-issue and paste a fresh token if you rotate it in-game."
             )}

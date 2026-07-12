@@ -1,6 +1,6 @@
 import "server-only";
 import { createServiceClient } from "./supabase/service";
-import { getFirmShops, TreasuryAuthError, type TreasuryShop } from "./treasury";
+import { getFirmShops, rotateToken, TreasuryAuthError, type TreasuryShop } from "./treasury";
 import { sendStockAlert } from "./discord";
 import type { Database } from "./supabase/types";
 
@@ -9,11 +9,40 @@ type FirmRow = Database["public"]["Tables"]["firms"]["Row"];
 const SEVERITY = { ok: 0, low: 1, empty: 2 } as const;
 type AlertState = keyof typeof SEVERITY;
 
+const ROTATE_IF_EXPIRING_WITHIN_MS = 24 * 60 * 60 * 1000; // rotate a day out, not at the wire
+
 function stateFor(currentStock: number | null, threshold: number | null): AlertState {
   if (currentStock === null) return "ok";
   if (currentStock <= 0) return "empty";
   if (threshold !== null && currentStock <= threshold) return "low";
   return "ok";
+}
+
+/**
+ * Rotates the firm's Treasury JWT if it's within a day of expiring (or its
+ * expiry is unknown), persisting the new token before it's used. Returns
+ * the token to actually make requests with. `/auth/rotate` is limited to
+ * 5/min so this must never run on every poll unconditionally — only when
+ * actually close to expiry.
+ */
+async function ensureFreshToken(db: ReturnType<typeof createServiceClient>, firm: FirmRow): Promise<string> {
+  const expiresAt = firm.treasury_jwt_expires_at ? new Date(firm.treasury_jwt_expires_at) : null;
+  const needsRotation = !expiresAt || expiresAt.getTime() - Date.now() < ROTATE_IF_EXPIRING_WITHIN_MS;
+
+  if (!needsRotation) return firm.treasury_jwt;
+
+  try {
+    const rotated = await rotateToken(firm.treasury_jwt);
+    await db
+      .from("firms")
+      .update({ treasury_jwt: rotated.token, treasury_jwt_expires_at: rotated.expiresAt })
+      .eq("id", firm.id);
+    return rotated.token;
+  } catch {
+    // Rotation failing doesn't mean the current token is dead yet — fall
+    // back to it and let the normal 401 handling below catch a real expiry.
+    return firm.treasury_jwt;
+  }
 }
 
 export interface PollResult {
@@ -26,10 +55,11 @@ export interface PollResult {
 /** Polls one firm's shops from the Treasury API and syncs everything into Supabase. */
 export async function pollFirm(firm: FirmRow): Promise<PollResult> {
   const db = createServiceClient();
+  const jwt = await ensureFreshToken(db, firm);
 
   let shops: TreasuryShop[];
   try {
-    shops = await getFirmShops(firm.treasury_jwt, firm.dc_firm_id);
+    shops = await getFirmShops(jwt, firm.dc_firm_id);
   } catch (err) {
     const isAuthError = err instanceof TreasuryAuthError;
     if (isAuthError) {
@@ -74,8 +104,8 @@ export async function pollFirm(firm: FirmRow): Promise<PollResult> {
       item_key: shop.itemKey,
       item_name: shop.itemName,
       item_custom: shop.itemCustom,
-      buy_price: shop.buyPrice !== null ? Number(shop.buyPrice) : null,
-      sell_price: shop.sellPrice !== null ? Number(shop.sellPrice) : null,
+      buy_price: shop.buyPrice,
+      sell_price: shop.sellPrice,
       batch_qty: shop.batchQty,
       current_stock: shop.currentStock,
       stock_at: shop.stockAt,

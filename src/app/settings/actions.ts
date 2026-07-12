@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { createServiceClient } from "@/lib/supabase/service";
-import { getFirmProfile, TreasuryAuthError } from "@/lib/treasury";
+import { getFirmProfile, decodeJwtExpiry, TreasuryAuthError } from "@/lib/treasury";
 
 export interface SettingsState {
   error: string | null;
@@ -65,7 +65,11 @@ export async function reconnectJwt(
   const db = createServiceClient();
   const { error } = await db
     .from("firms")
-    .update({ treasury_jwt: jwt, jwt_invalid: false })
+    .update({
+      treasury_jwt: jwt,
+      treasury_jwt_expires_at: decodeJwtExpiry(jwt)?.toISOString() ?? null,
+      jwt_invalid: false,
+    })
     .eq("id", session.firm.id);
 
   if (error) return { ...empty, error: error.message };

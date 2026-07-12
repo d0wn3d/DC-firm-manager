@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { getFirmProfile, TreasuryAuthError } from "@/lib/treasury";
+import { getFirmProfile, decodeJwtExpiry, TreasuryAuthError } from "@/lib/treasury";
 import { pollFirm } from "@/lib/poll";
 
 export interface ConnectFirmState {
@@ -55,6 +55,7 @@ export async function connectFirm(
         dc_firm_id: profile.firmId,
         dc_firm_name: profile.displayName,
         treasury_jwt: jwt,
+        treasury_jwt_expires_at: decodeJwtExpiry(jwt)?.toISOString() ?? null,
         jwt_invalid: false,
         discord_webhook_url: webhookUrl,
       },

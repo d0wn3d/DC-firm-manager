@@ -8,9 +8,11 @@ type Shop = Database["public"]["Tables"]["shops"]["Row"];
 
 const GRID = "sm:grid sm:grid-cols-[1.5fr_1.2fr_0.7fr_0.9fr_0.9fr_0.9fr]";
 
-function money(v: number | null) {
+function money(v: string | null) {
   if (v === null) return null;
-  return `$${v.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  const n = Number(v);
+  if (Number.isNaN(n)) return v;
+  return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 }
 
 function StatusStamp({ state }: { state: Shop["last_alert_state"] }) {

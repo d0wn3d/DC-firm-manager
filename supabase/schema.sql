@@ -1,6 +1,14 @@
 -- Stockbook schema
 -- Run this once in the Supabase SQL editor for a fresh project.
 --
+-- ALREADY RAN THIS BEFORE? You only need this one line, not the whole file
+-- (the CREATE TABLEs below are IF NOT EXISTS and won't touch your existing
+-- data, but they also won't add a column to a table that already exists):
+--
+--   alter table firms add column if not exists treasury_jwt_expires_at timestamptz;
+--   alter table shops alter column buy_price type text;
+--   alter table shops alter column sell_price type text;
+--
 -- Security model: every table below has RLS enabled with NO policies for
 -- the anon/authenticated roles. That's deliberate, not an oversight — the
 -- app never lets the browser query Supabase directly for firm or shop data.
@@ -14,6 +22,7 @@ create table if not exists firms (
   dc_firm_id integer not null unique,        -- firmId from the Treasury API
   dc_firm_name text not null,                -- display-name at connect time
   treasury_jwt text not null,                -- from /treasuryapi business issue
+  treasury_jwt_expires_at timestamptz,        -- decoded from the JWT's exp claim
   jwt_invalid boolean not null default false, -- set true on a 401 from the API
   discord_webhook_url text,                  -- where low-stock alerts post to
   created_at timestamptz not null default now()
@@ -43,8 +52,8 @@ create table if not exists shops (
   item_key text not null,
   item_name text,
   item_custom boolean not null default false,
-  buy_price numeric,
-  sell_price numeric,
+  buy_price text,                            -- decimal string, as DC sends it — never cast to a JS number
+  sell_price text,
   batch_qty integer,
   current_stock integer,
   stock_at timestamptz,

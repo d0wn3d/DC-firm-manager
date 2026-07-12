@@ -11,6 +11,7 @@ export interface Database {
           dc_firm_id: number;
           dc_firm_name: string;
           treasury_jwt: string;
+          treasury_jwt_expires_at: string | null;
           jwt_invalid: boolean;
           discord_webhook_url: string | null;
           created_at: string;
@@ -20,6 +21,7 @@ export interface Database {
           dc_firm_id: number;
           dc_firm_name: string;
           treasury_jwt: string;
+          treasury_jwt_expires_at?: string | null;
           jwt_invalid?: boolean;
           discord_webhook_url?: string | null;
           created_at?: string;
@@ -69,8 +71,8 @@ export interface Database {
           item_key: string;
           item_name: string | null;
           item_custom: boolean;
-          buy_price: number | null;
-          sell_price: number | null;
+          buy_price: string | null;
+          sell_price: string | null;
           batch_qty: number | null;
           current_stock: number | null;
           stock_at: string | null;
