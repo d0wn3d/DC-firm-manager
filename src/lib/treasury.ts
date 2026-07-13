@@ -96,6 +96,35 @@ export interface TreasuryRole {
   permissions: string[];
 }
 
+export interface TreasuryTransaction {
+  postingId: number;
+  txnId: number;
+  amount: string;
+  memo: string | null;
+  message: string | null;
+  settledAt: string;
+  initiatorUuid: string | null;
+  pluginSystem: string | null;
+}
+
+interface TransactionsPage {
+  accountId: number;
+  page: number;
+  totalPages: number;
+  totalItems: number;
+  items: TreasuryTransaction[];
+}
+
+/** GET /accounts/{accountId}/transactions — paginated ledger for one account. */
+export async function getAccountTransactions(
+  jwt: string,
+  accountId: number,
+  page = 1,
+  limit = 30,
+): Promise<TransactionsPage> {
+  return treasuryFetch(`/accounts/${accountId}/transactions`, jwt, { page, limit });
+}
+
 interface PagedResponse<T> {
   page: number;
   totalPages: number;

@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { createServiceClient } from "@/lib/supabase/service";
+import { getFirmAccounts, getAccountTransactions } from "@/lib/treasury";
+import { Ledger } from "./Ledger";
 
 function money(n: number) {
   return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
@@ -27,6 +29,12 @@ export default async function FirmPage() {
   const lines = valuations ?? [];
   const totalValue = lines.reduce((sum, l) => sum + l.total_value, 0);
   const unpriced = lines.filter((l) => l.value_source === "unavailable" && l.total_quantity > 0);
+
+  const accounts = await getFirmAccounts(session.firm.treasury_jwt).catch(() => []);
+  const defaultAccountId = accounts[0]?.accountId ?? null;
+  const initialLedgerPage = defaultAccountId
+    ? await getAccountTransactions(session.firm.treasury_jwt, defaultAccountId, 1, 25).catch(() => null)
+    : null;
 
   return (
     <div className="space-y-8">
@@ -93,6 +101,13 @@ export default async function FirmPage() {
           </ul>
         </div>
       )}
+
+      <div>
+        <p className="mb-3 font-mono text-[0.6875rem] tracking-[0.15em] text-paper-300/50 uppercase">
+          Transaction ledger
+        </p>
+        <Ledger accounts={accounts} initialAccountId={defaultAccountId} initialPage={initialLedgerPage} />
+      </div>
     </div>
   );
 }
