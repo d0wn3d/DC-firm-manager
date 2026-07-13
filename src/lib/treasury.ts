@@ -73,6 +73,29 @@ export interface TreasuryItemDetail {
   priceByDay: unknown[];
 }
 
+export interface TreasuryAccount {
+  accountId: number;
+  displayName: string | null;
+  accountType: string | null;
+  balance: string;
+  archived: boolean;
+}
+
+export interface TreasuryEmployee {
+  playerUuid: string;
+  playerName: string | null;
+  roleName: string | null;
+  joinedAt: string | null;
+}
+
+export interface TreasuryRole {
+  name: string;
+  rankOrder: number;
+  proprietorLike: boolean;
+  defaultRole: boolean;
+  permissions: string[];
+}
+
 interface PagedResponse<T> {
   page: number;
   totalPages: number;
@@ -121,6 +144,21 @@ export async function getFirmProfile(jwt: string): Promise<TreasuryFirmProfile> 
 /** GET /auth/me — lightweight token introspection (doesn't include expiry; decode the JWT for that). */
 export async function getMe(jwt: string): Promise<TreasuryMe> {
   return treasuryFetch("/auth/me", jwt);
+}
+
+/** GET /firms/me/accounts — every account the firm holds, each with its own balance. */
+export async function getFirmAccounts(jwt: string): Promise<TreasuryAccount[]> {
+  return treasuryFetch("/firms/me/accounts", jwt);
+}
+
+/** GET /firms/me/employees — everyone hired, with their in-game role name. */
+export async function getFirmEmployees(jwt: string): Promise<TreasuryEmployee[]> {
+  return treasuryFetch("/firms/me/employees", jwt);
+}
+
+/** GET /firms/me/roles — the firm's role definitions (names, rank, permissions). */
+export async function getFirmRoles(jwt: string): Promise<TreasuryRole[]> {
+  return treasuryFetch("/firms/me/roles", jwt);
 }
 
 /**

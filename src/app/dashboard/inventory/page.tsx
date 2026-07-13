@@ -42,8 +42,10 @@ export default async function InventoryPage() {
         <div className="ledger-sheet rounded-sm border border-ink-700 p-10 text-center">
           <p className="font-display text-xl italic text-ink-900">No shops found yet</p>
           <p className="mt-2 text-sm text-ink-700/70">
-            Set up a ChestShop tagged to {session.firm.dc_firm_name} in-game, then hit sync —
-            or if you just connected, give the first sync a moment and refresh.
+            Set up a ChestShop tagged to{" "}
+            {session.firm.dc_firm_name}{" "}
+            in-game, then hit sync — or if you just connected, give the first
+            sync a moment and refresh.
           </p>
         </div>
       ) : (
