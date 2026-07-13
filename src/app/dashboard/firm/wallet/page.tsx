@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
-import { getFirmAccounts, TreasuryAuthError } from "@/lib/treasury";
+import { createServiceClient } from "@/lib/supabase/service";
+import { getLedgerBalances, getOperatorFirm, getReconciliation } from "@/lib/ledger";
+import { DepositFlow } from "./DepositFlow";
 
-function money(v: string) {
-  const n = Number(v);
-  if (Number.isNaN(n)) return v;
+function money(n: number) {
   return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 }
 
@@ -13,64 +13,79 @@ export default async function WalletPage() {
   if (!session) redirect("/login");
   if (!session.firm) redirect("/setup");
 
-  let accounts: Awaited<ReturnType<typeof getFirmAccounts>> = [];
-  let error: string | null = null;
+  const db = createServiceClient();
+  const balances = await getLedgerBalances(db, session.firm.id);
 
+  let operatorName = "the operator";
   try {
-    accounts = await getFirmAccounts(session.firm.treasury_jwt);
-  } catch (err) {
-    error = err instanceof TreasuryAuthError
-      ? "Treasury token needs reconnecting — see Settings."
-      : "Couldn't reach the Treasury API just now.";
+    operatorName = (await getOperatorFirm(db)).dc_firm_name;
+  } catch {
+    // Handled below with a clear setup message instead of crashing the page.
   }
 
-  const total = accounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+  let reconciliation: Awaited<ReturnType<typeof getReconciliation>> | null = null;
+  if (session.firm.is_operator) {
+    reconciliation = await getReconciliation(db).catch(() => null);
+  }
 
-  if (error) {
+  if (operatorName === "the operator") {
     return (
       <div className="ledger-sheet rounded-sm border border-ink-700 p-10 text-center">
-        <p className="font-display text-xl italic text-ink-900">{error}</p>
+        <p className="font-display text-xl italic text-ink-900">Platform wallet isn&apos;t set up yet</p>
+        <p className="mt-2 text-sm text-ink-700/70">
+          One firm needs <code className="font-mono">is_operator = true</code> and a{" "}
+          <code className="font-mono">deposit_account_id</code> — see the note at the top of
+          supabase/schema.sql.
+        </p>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <section className="ledger-sheet rounded-sm border border-ink-700 p-8">
-        <p className="mb-1 font-mono text-[0.6875rem] tracking-[0.15em] text-ink-700/60 uppercase">
-          Cash across all accounts
-        </p>
-        <p className="font-display text-5xl text-ink-900">{money(total.toString())}</p>
+      <section className="grid gap-4 sm:grid-cols-2">
+        <div className="ledger-sheet rounded-sm border border-ink-700 p-6">
+          <p className="font-mono text-[0.6875rem] tracking-[0.15em] text-ink-700/60 uppercase">Operating</p>
+          <p className="font-display text-4xl text-moss-500">{money(balances.operating)}</p>
+        </div>
+        <div className="ledger-sheet rounded-sm border border-ink-700 p-6">
+          <p className="font-mono text-[0.6875rem] tracking-[0.15em] text-ink-700/60 uppercase">Savings</p>
+          <p className="font-display text-4xl text-ink-900">{money(balances.savings)}</p>
+          <p className="mt-1 text-xs text-ink-700/50">0%/mo for now — no locks yet either.</p>
+        </div>
       </section>
 
-      {accounts.length === 0 ? (
-        <div className="ledger-sheet rounded-sm border border-ink-700 p-10 text-center">
-          <p className="font-display text-xl italic text-ink-900">No accounts found</p>
-        </div>
-      ) : (
-        <div className="ledger-sheet overflow-hidden rounded-sm border border-ink-700">
-          <div className="hidden gap-4 border-b border-ink-900/10 px-5 py-2.5 font-mono text-[0.6875rem] tracking-[0.1em] text-ink-700/60 uppercase sm:grid sm:grid-cols-[1.5fr_1fr_1fr]">
-            <span>Account</span>
-            <span>Type</span>
-            <span className="text-right">Balance</span>
-          </div>
-          <ul>
-            {accounts.map((acc) => (
-              <li
-                key={acc.accountId}
-                className="flex flex-col gap-1.5 border-b border-ink-900/10 px-5 py-3.5 last:border-b-0 sm:grid sm:grid-cols-[1.5fr_1fr_1fr] sm:items-center sm:gap-4"
-              >
-                <p className="text-sm font-medium text-ink-900">
-                  {acc.displayName ?? `Account ${acc.accountId}`}
-                  {acc.archived && (
-                    <span className="ml-2 font-mono text-[0.6875rem] text-ink-700/40">archived</span>
-                  )}
-                </p>
-                <p className="font-mono text-xs text-ink-700/60">{acc.accountType ?? "—"}</p>
-                <p className="text-right font-display text-xl text-ink-900">{money(acc.balance)}</p>
-              </li>
-            ))}
-          </ul>
+      <DepositFlow operatorName={operatorName} />
+
+      <div className="ledger-sheet rounded-sm border border-ink-700 p-6">
+        <p className="mb-1 font-display text-lg text-ink-900">Move money</p>
+        <p className="text-xs text-ink-700/60">
+          Withdraw to your Minecraft account, or transfer between Operating and Savings —
+          not built yet. Deposits are real; this is next.
+        </p>
+      </div>
+
+      {reconciliation && (
+        <div
+          className={`rounded-sm border p-6 ${
+            reconciliation.healthy ? "border-ink-700" : "border-rust-500 bg-rust-600/10"
+          }`}
+        >
+          <p className="mb-1 font-mono text-[0.6875rem] tracking-[0.15em] text-ink-700/50 uppercase">
+            Reserve check (operator only)
+          </p>
+          <p className="text-sm text-paper-200">
+            Everyone&apos;s ledger balances add up to{" "}
+            <span className="font-mono">{money(reconciliation.pooledTotal)}</span>, against{" "}
+            <span className="font-mono">{money(reconciliation.realBalance)}</span> actually held
+            in-game.
+          </p>
+          {!reconciliation.healthy && (
+            <p className="mt-2 font-mono text-xs text-rust-400">
+              Pooled balances exceed the real account — something&apos;s wrong, stop and
+              investigate before any withdrawals happen.
+            </p>
+          )}
         </div>
       )}
     </div>

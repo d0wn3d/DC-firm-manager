@@ -14,6 +14,8 @@ export interface Database {
           treasury_jwt_expires_at: string | null;
           jwt_invalid: boolean;
           discord_webhook_url: string | null;
+          is_operator: boolean;
+          deposit_account_id: number | null;
           created_at: string;
         };
         Insert: {
@@ -24,6 +26,8 @@ export interface Database {
           treasury_jwt_expires_at?: string | null;
           jwt_invalid?: boolean;
           discord_webhook_url?: string | null;
+          is_operator?: boolean;
+          deposit_account_id?: number | null;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["firms"]["Insert"]>;
@@ -157,6 +161,70 @@ export interface Database {
         Relationships: [
           {
             foreignKeyName: "item_valuations_firm_id_fkey";
+            columns: ["firm_id"];
+            isOneToOne: false;
+            referencedRelation: "firms";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ledger_accounts: {
+        Row: {
+          firm_id: string;
+          account_type: "operating" | "savings";
+          balance: number;
+          locked_balance: number;
+          updated_at: string;
+        };
+        Insert: {
+          firm_id: string;
+          account_type: "operating" | "savings";
+          balance?: number;
+          locked_balance?: number;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["ledger_accounts"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "ledger_accounts_firm_id_fkey";
+            columns: ["firm_id"];
+            isOneToOne: false;
+            referencedRelation: "firms";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      deposit_requests: {
+        Row: {
+          id: string;
+          firm_id: string;
+          requested_by: string;
+          whole_dollar_amount: number;
+          cents_code: number;
+          status: "pending" | "matched" | "expired" | "cancelled";
+          matched_posting_id: number | null;
+          credited_amount: number | null;
+          created_at: string;
+          expires_at: string;
+          matched_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          firm_id: string;
+          requested_by: string;
+          whole_dollar_amount: number;
+          cents_code: number;
+          status?: "pending" | "matched" | "expired" | "cancelled";
+          matched_posting_id?: number | null;
+          credited_amount?: number | null;
+          created_at?: string;
+          expires_at: string;
+          matched_at?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["deposit_requests"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "deposit_requests_firm_id_fkey";
             columns: ["firm_id"];
             isOneToOne: false;
             referencedRelation: "firms";

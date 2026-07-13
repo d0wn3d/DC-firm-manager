@@ -10,8 +10,17 @@
 --   alter table shops alter column sell_price type text;
 --   alter table shops add column if not exists manual_stock integer;
 --   alter table shops add column if not exists manual_stock_at timestamptz;
---   (then re-run this whole file once — the item_valuations CREATE TABLE
---   below is new and IF NOT EXISTS will just add it alongside your data)
+--   alter table firms add column if not exists is_operator boolean not null default false;
+--   alter table firms add column if not exists deposit_account_id bigint;
+--   (then re-run this whole file once for the item_valuations / ledger_accounts /
+--   deposit_requests tables — all CREATE TABLE IF NOT EXISTS, safe alongside your data)
+--
+-- AFTER migrating: exactly one firm needs is_operator = true (MorattiSolutions,
+-- since it's the one actually holding pooled deposits) and deposit_account_id
+-- set to whichever of its real Treasury accounts should receive them:
+--
+--   update firms set is_operator = true, deposit_account_id = <real accountId>
+--   where dc_firm_name = 'MorattiSolutions';
 --
 -- Security model: every table below has RLS enabled with NO policies for
 -- the anon/authenticated roles. That's deliberate, not an oversight — the
@@ -29,6 +38,8 @@ create table if not exists firms (
   treasury_jwt_expires_at timestamptz,        -- decoded from the JWT's exp claim
   jwt_invalid boolean not null default false, -- set true on a 401 from the API
   discord_webhook_url text,                  -- where low-stock alerts post to
+  is_operator boolean not null default false, -- true only for the custodian firm (MorattiSolutions)
+  deposit_account_id bigint,                 -- operator's real Treasury account that receives deposits
   created_at timestamptz not null default now()
 );
 
@@ -98,10 +109,49 @@ create table if not exists poll_log (
 
 create index if not exists poll_log_firm_id_idx on poll_log (firm_id, polled_at desc);
 
+-- Platform ledger: what each firm is owed from the pooled real money sitting
+-- in the operator firm's actual Treasury account. Every credit here MUST be
+-- backed by a verified, uniquely-claimed real transaction — see
+-- deposit_requests below and lib/ledger.ts. This is the one table in this
+-- schema where a bug has real financial consequences for someone besides
+-- you; treat changes to it accordingly.
+create table if not exists ledger_accounts (
+  firm_id uuid not null references firms (id) on delete cascade,
+  account_type text not null check (account_type in ('operating', 'savings')),
+  balance numeric not null default 0,
+  locked_balance numeric not null default 0,  -- reserved for a future savings-lock mechanic
+  updated_at timestamptz not null default now(),
+  primary key (firm_id, account_type)
+);
+
+create table if not exists deposit_requests (
+  id uuid primary key default gen_random_uuid(),
+  firm_id uuid not null references firms (id) on delete cascade,
+  requested_by uuid not null references auth.users (id) on delete cascade,
+  whole_dollar_amount integer not null check (whole_dollar_amount > 0),
+  cents_code integer not null check (cents_code between 0 and 99),
+  status text not null default 'pending' check (status in ('pending', 'matched', 'expired', 'cancelled')),
+  matched_posting_id bigint,                  -- Treasury's postingId, once matched
+  credited_amount numeric,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  matched_at timestamptz
+);
+
+-- No two people can be waiting on the same cents code at once.
+create unique index if not exists deposit_requests_pending_cents_idx
+  on deposit_requests (cents_code) where status = 'pending';
+
+-- The same real transaction can never be credited to two different requests.
+create unique index if not exists deposit_requests_matched_posting_idx
+  on deposit_requests (matched_posting_id) where matched_posting_id is not null;
+
 alter table firms enable row level security;
 alter table firm_members enable row level security;
 alter table shops enable row level security;
 alter table poll_log enable row level security;
 alter table item_valuations enable row level security;
+alter table ledger_accounts enable row level security;
+alter table deposit_requests enable row level security;
 
 -- No policies added on purpose — see the note at the top of this file.
