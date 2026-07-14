@@ -19,7 +19,9 @@ export default async function SettingsPage() {
 
       <h1 className="mb-1 font-display text-4xl italic text-paper-100">Settings</h1>
       <p className="mb-8 text-sm text-paper-300/70">
-        {session.firm.dc_firm_name} · Registry No. {session.firm.dc_firm_id}
+        {session.firm.dc_firm_name}{" "}
+        · Registry No.{" "}
+        {session.firm.dc_firm_id}
       </p>
 
       <div className="space-y-6">

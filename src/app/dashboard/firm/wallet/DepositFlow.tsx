@@ -64,8 +64,10 @@ export function DepositFlow({ operatorName }: { operatorName: string }) {
       <div className="ledger-sheet rounded-sm border border-ink-700 p-6">
         <p className="mb-1 font-display text-lg text-ink-900">Add funds</p>
         <p className="mb-4 text-xs text-ink-700/60">
-          Pay {operatorName} in-game. Every deposit gets a personal cents code — pay the exact
-          amount shown, including the cents, and you&apos;re credited the full amount you send.
+          Pay{" "}
+          {operatorName}{" "}
+          in-game. Every deposit gets a personal cents code — pay the exact amount
+          shown, including the cents, and you&apos;re credited the full amount you send.
         </p>
         <label className="mb-1 block font-mono text-[0.6875rem] tracking-[0.1em] text-ink-700/50 uppercase">
           Amount (whole dollars)

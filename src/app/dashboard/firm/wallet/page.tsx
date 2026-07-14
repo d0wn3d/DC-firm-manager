@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getLedgerBalances, getOperatorFirm, getReconciliation } from "@/lib/ledger";
 import { DepositFlow } from "./DepositFlow";
+import { WalletActivity } from "./WalletActivity";
 
 function money(n: number) {
   return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
@@ -27,6 +28,13 @@ export default async function WalletPage() {
   if (session.firm.is_operator) {
     reconciliation = await getReconciliation(db).catch(() => null);
   }
+
+  const { data: deposits } = await db
+    .from("deposit_requests")
+    .select("*")
+    .eq("firm_id", session.firm.id)
+    .order("created_at", { ascending: false })
+    .limit(100);
 
   if (operatorName === "the operator") {
     return (
@@ -64,6 +72,8 @@ export default async function WalletPage() {
           not built yet. Deposits are real; this is next.
         </p>
       </div>
+
+      <WalletActivity deposits={deposits ?? []} />
 
       {reconciliation && (
         <div

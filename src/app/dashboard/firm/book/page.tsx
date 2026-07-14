@@ -52,8 +52,8 @@ export default async function FirmPage() {
         </p>
         {unpriced.length > 0 && (
           <p className="mt-3 font-mono text-xs text-brass-600">
-            {unpriced.length} item{unpriced.length === 1 ? "" : "s"} held with no price
-            anywhere to value against — excluded from the total.
+            {unpriced.length} item{unpriced.length === 1 ? "" : "s"}{" "}
+            held with no price anywhere to value against — excluded from the total.
           </p>
         )}
       </section>

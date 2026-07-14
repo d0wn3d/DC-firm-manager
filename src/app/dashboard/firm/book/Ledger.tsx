@@ -106,7 +106,8 @@ export function Ledger({
             ← Prev
           </button>
           <span className="font-mono text-[0.6875rem] text-ink-700/50">
-            Page {data.page} of {data.totalPages}
+            Page {data.page}{" "}
+            of {data.totalPages}
           </span>
           <button
             onClick={() => accountId !== null && load(accountId, data.page + 1)}
