@@ -136,31 +136,57 @@ export interface Database {
           },
         ];
       };
-      item_valuations: {
+      warehouse_manual_items: {
+        Row: {
+          id: string;
+          firm_id: string;
+          item_key: string;
+          item_name: string;
+          quantity: number;
+          valuation_method: "lowest_shop_price" | "manual_price";
+          manual_unit_price: number | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          firm_id: string;
+          item_key: string;
+          item_name: string;
+          quantity?: number;
+          valuation_method?: "lowest_shop_price" | "manual_price";
+          manual_unit_price?: number | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["warehouse_manual_items"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "warehouse_manual_items_firm_id_fkey";
+            columns: ["firm_id"];
+            isOneToOne: false;
+            referencedRelation: "firms";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      warehouse_price_overrides: {
         Row: {
           firm_id: string;
           item_key: string;
-          item_name: string | null;
-          unit_value: number | null;
-          value_source: "market_24h" | "own_shops_fallback" | "unavailable";
-          total_quantity: number;
-          total_value: number;
-          computed_at: string;
+          manual_unit_price: number;
+          updated_at: string;
         };
         Insert: {
           firm_id: string;
           item_key: string;
-          item_name?: string | null;
-          unit_value?: number | null;
-          value_source?: "market_24h" | "own_shops_fallback" | "unavailable";
-          total_quantity?: number;
-          total_value?: number;
-          computed_at?: string;
+          manual_unit_price: number;
+          updated_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["item_valuations"]["Insert"]>;
+        Update: Partial<Database["public"]["Tables"]["warehouse_price_overrides"]["Insert"]>;
         Relationships: [
           {
-            foreignKeyName: "item_valuations_firm_id_fkey";
+            foreignKeyName: "warehouse_price_overrides_firm_id_fkey";
             columns: ["firm_id"];
             isOneToOne: false;
             referencedRelation: "firms";

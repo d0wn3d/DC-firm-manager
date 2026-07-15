@@ -3,7 +3,6 @@ import { createServiceClient } from "./supabase/service";
 import { getFirmShops, rotateToken, TreasuryAuthError, type TreasuryShop } from "./treasury";
 import { sendStockAlert } from "./discord";
 import { effectiveStock, stateFor, SEVERITY, type AlertState } from "./stock";
-import { computeValuation } from "./valuation";
 import type { Database } from "./supabase/types";
 
 type FirmRow = Database["public"]["Tables"]["firms"]["Row"];
@@ -159,22 +158,6 @@ export async function pollFirm(firm: FirmRow): Promise<PollResult> {
 
   if (firm.jwt_invalid) {
     await db.from("firms").update({ jwt_invalid: false }).eq("id", firm.id);
-  }
-
-  // Valuation reads the just-upserted rows back (rather than reusing
-  // rowsToUpsert in memory) so it sees the real stored manual_stock values
-  // too, not just what this poll cycle wrote.
-  const { data: freshShops } = await db.from("shops").select("*").eq("firm_id", firm.id);
-  if (freshShops && freshShops.length > 0) {
-    try {
-      const { lines } = await computeValuation(jwt, firm.id, freshShops);
-      if (lines.length > 0) {
-        await db.from("item_valuations").upsert(lines, { onConflict: "firm_id,item_key" });
-      }
-    } catch {
-      // Valuation is supplementary — a failure here shouldn't mark the
-      // whole poll (stock sync, which is the important part) as failed.
-    }
   }
 
   await db.from("poll_log").insert({

@@ -1,108 +1,135 @@
 import "server-only";
-import { getItemDetail } from "./treasury";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { effectiveStock } from "./stock";
 import type { Database } from "./supabase/types";
 
-type ShopRow = Database["public"]["Tables"]["shops"]["Row"];
-type ValuationInsert = Database["public"]["Tables"]["item_valuations"]["Insert"];
+type DB = SupabaseClient<Database>;
 
-/**
- * Values one item using the same two-step rule every time: DC's own 24h
- * market average first, and only when that's genuinely unavailable (no
- * trades in the window — not just a low number) do we fall back to the
- * cheapest price the firm itself is asking across its own shops for that
- * item. Note the field: `buyPrice` is what a *player* pays to buy from the
- * shop — i.e. the firm's own asking/selling price — which is what "we sell
- * coal for 0.3" actually maps to, not `sellPrice` (what the firm pays to
- * acquire more).
- */
-async function valueOneItem(
-  jwt: string,
-  itemKey: string,
-  ownShops: ShopRow[],
-): Promise<{ unitValue: number | null; source: ValuationInsert["value_source"] }> {
-  try {
-    const detail = await getItemDetail(jwt, itemKey, 1);
-    if (detail.tradeCount > 0 && detail.avgUnitPrice !== null) {
-      const parsed = Number(detail.avgUnitPrice);
-      if (!Number.isNaN(parsed)) {
-        return { unitValue: parsed, source: "market_24h" };
-      }
-    }
-  } catch {
-    // Falls through to the own-shops fallback below.
-  }
+export type PricedBy = "lowest_shop_price" | "manual" | "unavailable";
 
-  const askingPrices = ownShops
-    .map((s) => (s.buy_price !== null ? Number(s.buy_price) : null))
-    .filter((n): n is number => n !== null && !Number.isNaN(n));
-
-  if (askingPrices.length > 0) {
-    return { unitValue: Math.min(...askingPrices), source: "own_shops_fallback" };
-  }
-
-  return { unitValue: null, source: "unavailable" };
-}
-
-export interface ValuationSummary {
+export interface WarehouseLine {
+  itemKey: string;
+  itemName: string;
+  quantity: number;
+  unitPrice: number | null;
+  pricedBy: PricedBy;
   totalValue: number;
-  lines: ValuationInsert[];
+  source: "chestshop" | "manual";
+  manualItemId?: string;
+  valuationMethod?: "lowest_shop_price" | "manual_price";
+}
+
+export interface WarehouseValuation {
+  lines: WarehouseLine[];
+  totalValue: number;
+  unpricedCount: number;
 }
 
 /**
- * Groups the firm's already-synced shops by item, values each one, and
- * returns rows ready to upsert into item_valuations. Only fetches market
- * pricing for items the firm actually holds stock of — no point spending
- * an API call valuing something worth $0.
+ * The firm's own cheapest listed price per item, straight from the shops
+ * table — no external API call. This used to be a 24h-market-average
+ * lookup against DC's API, but that produced bad numbers (a thin/skewed
+ * server-wide average overvaluing bulk items like Netherrack — $4.32 for
+ * something the firm actually sells at $0.05). This is the only automatic
+ * pricing signal now; everything else is a manual number.
  */
-export async function computeValuation(
-  jwt: string,
-  firmId: string,
-  shops: ShopRow[],
-): Promise<ValuationSummary> {
-  const byItem = new Map<string, ShopRow[]>();
-  for (const shop of shops) {
-    const list = byItem.get(shop.item_key) ?? [];
-    list.push(shop);
-    byItem.set(shop.item_key, list);
-  }
+async function getLowestShopPrices(db: DB, firmId: string): Promise<Map<string, number>> {
+  const { data: shops } = await db
+    .from("shops")
+    .select("item_key, buy_price")
+    .eq("firm_id", firmId)
+    .not("buy_price", "is", null);
 
-  const lines: ValuationInsert[] = [];
-  let totalValue = 0;
-
-  for (const [itemKey, group] of byItem) {
-    const totalQuantity = group.reduce((sum, s) => sum + (effectiveStock(s).value ?? 0), 0);
-    const itemName = group.find((s) => s.item_name)?.item_name ?? null;
-
-    if (totalQuantity <= 0) {
-      lines.push({
-        firm_id: firmId,
-        item_key: itemKey,
-        item_name: itemName,
-        unit_value: null,
-        value_source: "unavailable",
-        total_quantity: 0,
-        total_value: 0,
-        computed_at: new Date().toISOString(),
-      });
-      continue;
+  const lowest = new Map<string, number>();
+  for (const shop of shops ?? []) {
+    const price = Number(shop.buy_price);
+    if (Number.isNaN(price)) continue;
+    const current = lowest.get(shop.item_key);
+    if (current === undefined || price < current) {
+      lowest.set(shop.item_key, price);
     }
+  }
+  return lowest;
+}
 
-    const { unitValue, source } = await valueOneItem(jwt, itemKey, group);
-    const lineValue = unitValue !== null ? Math.round(unitValue * totalQuantity * 100) / 100 : 0;
-    totalValue += lineValue;
+/**
+ * Combines auto-synced ChestShop inventory with manually-added warehouse
+ * stock into one priced list. Each line is priced by either the firm's own
+ * lowest listed price for that item, or a manual number — nothing here
+ * calls the Treasury API, so it's cheap enough to compute on every page
+ * load rather than needing to be cached by the poll job.
+ */
+export async function getWarehouseValuation(db: DB, firmId: string): Promise<WarehouseValuation> {
+  const [{ data: shops }, { data: overrides }, { data: manualItems }, lowestShopPrices] = await Promise.all([
+    db.from("shops").select("*").eq("firm_id", firmId),
+    db.from("warehouse_price_overrides").select("*").eq("firm_id", firmId),
+    db.from("warehouse_manual_items").select("*").eq("firm_id", firmId),
+    getLowestShopPrices(db, firmId),
+  ]);
 
-    lines.push({
-      firm_id: firmId,
-      item_key: itemKey,
-      item_name: itemName,
-      unit_value: unitValue,
-      value_source: source,
-      total_quantity: totalQuantity,
-      total_value: lineValue,
-      computed_at: new Date().toISOString(),
+  const overrideByKey = new Map((overrides ?? []).map((o) => [o.item_key, o.manual_unit_price]));
+
+  const byItem = new Map<string, { name: string; quantity: number }>();
+  for (const shop of shops ?? []) {
+    const existing = byItem.get(shop.item_key);
+    const qty = effectiveStock(shop).value ?? 0;
+    byItem.set(shop.item_key, {
+      name: existing?.name || shop.item_name || shop.item_key,
+      quantity: (existing?.quantity ?? 0) + qty,
     });
   }
 
-  return { totalValue: Math.round(totalValue * 100) / 100, lines };
+  const lines: WarehouseLine[] = [];
+
+  for (const [itemKey, { name, quantity }] of byItem) {
+    if (quantity <= 0) continue;
+    const override = overrideByKey.get(itemKey);
+    const lowest = lowestShopPrices.get(itemKey) ?? null;
+    const unitPrice = override ?? lowest;
+    const pricedBy: PricedBy =
+      override !== undefined ? "manual" : lowest !== null ? "lowest_shop_price" : "unavailable";
+
+    lines.push({
+      itemKey,
+      itemName: name,
+      quantity,
+      unitPrice,
+      pricedBy,
+      totalValue: unitPrice !== null ? Math.round(unitPrice * quantity * 100) / 100 : 0,
+      source: "chestshop",
+    });
+  }
+
+  for (const item of manualItems ?? []) {
+    let unitPrice: number | null;
+    let pricedBy: PricedBy;
+
+    if (item.valuation_method === "manual_price") {
+      unitPrice = item.manual_unit_price;
+      pricedBy = unitPrice !== null ? "manual" : "unavailable";
+    } else {
+      unitPrice = lowestShopPrices.get(item.item_key) ?? null;
+      pricedBy = unitPrice !== null ? "lowest_shop_price" : "unavailable";
+    }
+
+    lines.push({
+      itemKey: item.item_key,
+      itemName: item.item_name,
+      quantity: item.quantity,
+      unitPrice,
+      pricedBy,
+      totalValue: unitPrice !== null ? Math.round(unitPrice * item.quantity * 100) / 100 : 0,
+      source: "manual",
+      manualItemId: item.id,
+      valuationMethod: item.valuation_method,
+    });
+  }
+
+  lines.sort((a, b) => b.totalValue - a.totalValue);
+
+  return {
+    lines,
+    totalValue: Math.round(lines.reduce((sum, l) => sum + l.totalValue, 0) * 100) / 100,
+    unpricedCount: lines.filter((l) => l.pricedBy === "unavailable" && l.quantity > 0).length,
+  };
 }

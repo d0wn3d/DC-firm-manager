@@ -8,6 +8,7 @@ const TABS = [
   { href: "/dashboard/firm/wallet", label: "Wallet" },
   { href: "/dashboard/firm/employees", label: "Employees" },
   { href: "/dashboard/firm/book", label: "Book" },
+  { href: "/dashboard/firm/warehouse", label: "Warehouse" },
 ];
 
 export function FirmSubNav() {

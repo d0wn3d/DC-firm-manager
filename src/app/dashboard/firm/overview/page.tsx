@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getSession } from "@/lib/auth";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getFirmAccounts, getFirmEmployees } from "@/lib/treasury";
+import { getWarehouseValuation } from "@/lib/valuation";
 
 function money(n: number) {
   return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
@@ -29,21 +30,21 @@ export default async function OverviewPage() {
 
   const db = createServiceClient();
 
-  const [{ data: valuations }, { data: shops }, accountsResult, employeesResult] = await Promise.all([
-    db.from("item_valuations").select("total_value").eq("firm_id", session.firm.id),
+  const [{ data: shops }, accountsResult, employeesResult, warehouse] = await Promise.all([
     db.from("shops").select("last_alert_state").eq("firm_id", session.firm.id),
     getFirmAccounts(session.firm.treasury_jwt).catch(() => null),
     getFirmEmployees(session.firm.treasury_jwt).catch(() => null),
+    getWarehouseValuation(db, session.firm.id),
   ]);
 
-  const inventoryValue = (valuations ?? []).reduce((sum, v) => sum + v.total_value, 0);
+  const inventoryValue = warehouse.totalValue;
   const cashTotal = accountsResult?.reduce((sum, a) => sum + (Number(a.balance) || 0), 0) ?? null;
   const needsAttention = (shops ?? []).filter((s) => s.last_alert_state !== "ok").length;
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <Stat label="Cash on hand" value={cashTotal !== null ? money(cashTotal) : "—"} href="/dashboard/firm/wallet" />
-      <Stat label="Inventory value" value={money(inventoryValue)} href="/dashboard/firm/book" />
+      <Stat label="Inventory value" value={money(inventoryValue)} href="/dashboard/firm/warehouse" />
       <Stat
         label="Shops needing attention"
         value={String(needsAttention)}
