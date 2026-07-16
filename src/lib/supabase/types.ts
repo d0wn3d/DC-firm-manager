@@ -258,6 +258,86 @@ export interface Database {
           },
         ];
       };
+      chart_of_accounts: {
+        Row: {
+          id: string;
+          firm_id: string;
+          code: string;
+          name: string;
+          type: "asset" | "liability" | "equity" | "income" | "expense";
+          parent_id: string | null;
+          is_system: boolean;
+          archived: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          firm_id: string;
+          code: string;
+          name: string;
+          type: "asset" | "liability" | "equity" | "income" | "expense";
+          parent_id?: string | null;
+          is_system?: boolean;
+          archived?: boolean;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["chart_of_accounts"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "chart_of_accounts_firm_id_fkey";
+            columns: ["firm_id"];
+            isOneToOne: false;
+            referencedRelation: "firms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "chart_of_accounts_parent_id_fkey";
+            columns: ["parent_id"];
+            isOneToOne: false;
+            referencedRelation: "chart_of_accounts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      journal_entries: {
+        Row: {
+          id: string;
+          firm_id: string;
+          account_id: number;
+          posting_id: number;
+          category_id: string | null;
+          memo: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          firm_id: string;
+          account_id: number;
+          posting_id: number;
+          category_id?: string | null;
+          memo?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["journal_entries"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "journal_entries_firm_id_fkey";
+            columns: ["firm_id"];
+            isOneToOne: false;
+            referencedRelation: "firms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "journal_entries_category_id_fkey";
+            columns: ["category_id"];
+            isOneToOne: false;
+            referencedRelation: "chart_of_accounts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
