@@ -1,21 +1,13 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./supabase/types";
+import type { AccountType } from "./accountTypes";
+
+export type { AccountType } from "./accountTypes";
 
 type DB = SupabaseClient<Database>;
 
 export type ChartAccount = Database["public"]["Tables"]["chart_of_accounts"]["Row"];
-export type AccountType = ChartAccount["type"];
-
-export const ACCOUNT_TYPE_ORDER: AccountType[] = ["income", "expense", "asset", "liability", "equity"];
-
-export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
-  income: "Income",
-  expense: "Expense",
-  asset: "Asset",
-  liability: "Liability",
-  equity: "Equity",
-};
 
 /**
  * Seeded once, the first time a firm opens Chart of Accounts. Trimmed to

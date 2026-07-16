@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { createCategory, renameCategory, archiveCategory } from "./actions";
-import { ACCOUNT_TYPE_ORDER, ACCOUNT_TYPE_LABELS, type ChartAccount, type AccountType } from "@/lib/accounts";
+import type { ChartAccount } from "@/lib/accounts";
+import { ACCOUNT_TYPE_ORDER, ACCOUNT_TYPE_LABELS, type AccountType } from "@/lib/accountTypes";
 
 const TYPE_TONE: Record<AccountType, string> = {
   income: "text-moss-500",
