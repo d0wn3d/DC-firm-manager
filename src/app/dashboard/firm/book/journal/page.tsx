@@ -12,12 +12,13 @@ export default async function JournalPage() {
   if (!session.firm) redirect("/setup");
 
   const db = createServiceClient();
-  const accounts = await getFirmAccounts(session.firm.treasury_jwt).catch(() => []);
-
-  const [categories, feed] = await Promise.all([
+  const [accounts, categories] = await Promise.all([
+    getFirmAccounts(session.firm.treasury_jwt).catch(() => []),
     getChartOfAccounts(db, session.firm.id),
-    accounts.length > 0 ? getJournalFeed(db, session.firm.treasury_jwt, session.firm.id, accounts) : Promise.resolve([]),
   ]);
+
+  const feed =
+    accounts.length > 0 ? await getJournalFeed(db, session.firm.treasury_jwt, session.firm.id, accounts, categories) : [];
 
   return <Journal initialFeed={feed} categories={categories} accounts={accounts} />;
 }

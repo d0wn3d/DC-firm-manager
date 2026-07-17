@@ -27,6 +27,26 @@ function StatusStamp({ state }: { state: AlertState }) {
   );
 }
 
+/** In-stock / low / empty counts for a group of shops, colored green/yellow/red. */
+function CountBreakdown({ shops }: { shops: Shop[] }) {
+  const ok = shops.filter((s) => s.last_alert_state === "ok").length;
+  const low = shops.filter((s) => s.last_alert_state === "low").length;
+  const empty = shops.filter((s) => s.last_alert_state === "empty").length;
+
+  return (
+    <span
+      className="flex items-center gap-1 font-mono text-sm"
+      title={`${ok} in stock · ${low} low stock · ${empty} empty`}
+    >
+      <span className="font-semibold text-moss-500">{ok}</span>
+      <span className="text-ink-700/30">/</span>
+      <span className="font-semibold text-brass-500">{low}</span>
+      <span className="text-ink-700/30">/</span>
+      <span className="font-semibold text-rust-500">{empty}</span>
+    </span>
+  );
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between sm:block sm:text-right">
@@ -160,7 +180,6 @@ export function ShopTable({ shops }: { shops: Shop[] }) {
       {sortedCategories.map(([itemKey, group]) => {
         const label = group[0].item_name ?? itemKey;
         const totalStock = group.reduce((sum, s) => sum + (effectiveStock(s).value ?? 0), 0);
-        const worst = worstState(group);
 
         return (
           <details key={itemKey} open className="ledger-sheet overflow-hidden rounded-sm border border-ink-700">
@@ -173,7 +192,7 @@ export function ShopTable({ shops }: { shops: Shop[] }) {
               </div>
               <div className="flex items-center gap-4">
                 <span className="font-mono text-sm text-ink-700/70">{totalStock} total</span>
-                <StatusStamp state={worst} />
+                <CountBreakdown shops={group} />
               </div>
             </summary>
 

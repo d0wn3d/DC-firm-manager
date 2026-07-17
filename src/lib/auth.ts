@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { createClient } from "./supabase/server";
 import { createServiceClient } from "./supabase/service";
 import type { Database } from "./supabase/types";
@@ -17,8 +18,16 @@ export interface SessionInfo {
  * to". Every page and Server Action that touches firm/shop data should call
  * this first and scope its service-client queries to `firm.id` — that's
  * what stands in for RLS, since the shops/firms tables have none.
+ *
+ * Wrapped in React's cache() because every layout AND every page under
+ * /dashboard calls this independently — dashboard/layout.tsx calls it once
+ * for the shell, then whichever page.tsx is rendering calls it again for
+ * its own redirect checks. Without memoizing, a single tab switch was
+ * triggering 2+ full supabase.auth.getUser() round trips (a real network
+ * call to Supabase Auth, not a local JWT decode) plus 2+ firm_members
+ * lookups. cache() collapses all of that into one real check per request.
  */
-export async function getSession(): Promise<SessionInfo | null> {
+export const getSession = cache(async (): Promise<SessionInfo | null> => {
   const supabase = await createClient();
   const {
     data: { user },
@@ -43,4 +52,4 @@ export async function getSession(): Promise<SessionInfo | null> {
     : null;
 
   return { userId: user.id, discordName, avatarUrl, firm };
-}
+});

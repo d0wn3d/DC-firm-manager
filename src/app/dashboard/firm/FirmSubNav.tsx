@@ -7,7 +7,12 @@ const TABS = [
   { href: "/dashboard/firm/overview", label: "Overview" },
   { href: "/dashboard/firm/wallet", label: "Wallet" },
   { href: "/dashboard/firm/employees", label: "Employees" },
-  { href: "/dashboard/firm/book", label: "Book" },
+  // Points straight at the Journal sub-tab instead of /book, which just
+  // redirects there — one less hop, and it sidesteps a redirect-through-Link
+  // navigation that was rendering a blank page for a moment before the
+  // destination resolved. activeMatch keeps this tab highlighted across all
+  // three Book sub-pages, not just Journal specifically.
+  { href: "/dashboard/firm/book/journal", activeMatch: "/dashboard/firm/book", label: "Book" },
   { href: "/dashboard/firm/warehouse", label: "Warehouse" },
 ];
 
@@ -17,7 +22,7 @@ export function FirmSubNav() {
   return (
     <nav className="mb-6 flex gap-1 border-b border-ink-700/60 pb-3">
       {TABS.map((tab) => {
-        const active = pathname?.startsWith(tab.href);
+        const active = pathname?.startsWith(tab.activeMatch ?? tab.href);
         return (
           <Link
             key={tab.href}

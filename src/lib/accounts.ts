@@ -10,25 +10,59 @@ type DB = SupabaseClient<Database>;
 export type ChartAccount = Database["public"]["Tables"]["chart_of_accounts"]["Row"];
 
 /**
- * Seeded once, the first time a firm opens Chart of Accounts. Trimmed to
- * what Stockbook can actually compute from Treasury transactions alone —
- * Payroll and Loan payments are expense *categories* here even though
- * there's no dedicated Payroll/Loans module yet, so a firm can still tag
- * transactions against them by hand until those modules exist.
+ * Seeded once, the first time a firm opens Chart of Accounts. Matches
+ * DCManager's own chart of accounts (codes and names) rather than the
+ * trimmed-down version this shipped with originally — including
+ * "Uncategorized Income" (4950) and "Uncategorized Expense" (6900),
+ * which lib/reports.ts falls back to for anything left untagged, the same
+ * way DCManager's own P&L never just drops untagged activity.
+ * Payroll/Loans/Contracts categories exist here even though there's no
+ * dedicated module for any of them yet, so a firm can tag transactions
+ * against them by hand in the meantime.
  */
 const DEFAULT_CATEGORIES: Array<{ code: string; name: string; type: AccountType }> = [
-  { code: "4000", name: "Shop sales", type: "income" },
-  { code: "4010", name: "Contract revenue", type: "income" },
-  { code: "4900", name: "Other income", type: "income" },
-  { code: "5000", name: "Inventory & supplies", type: "expense" },
-  { code: "5100", name: "Payroll", type: "expense" },
-  { code: "5200", name: "Rent & fees", type: "expense" },
-  { code: "5300", name: "Loan payments", type: "expense" },
-  { code: "5900", name: "Other expense", type: "expense" },
-  { code: "1000", name: "Cash — Treasury", type: "asset" },
-  { code: "1500", name: "Warehouse inventory", type: "asset" },
-  { code: "2000", name: "Loans payable", type: "liability" },
-  { code: "3000", name: "Owner's equity", type: "equity" },
+  // Assets
+  { code: "1000", name: "Cash — Operating", type: "asset" },
+  { code: "1050", name: "Cash Held In-Game", type: "asset" },
+  { code: "1100", name: "Savings", type: "asset" },
+  { code: "1200", name: "Accounts Receivable", type: "asset" },
+  { code: "1260", name: "Guarantee Receivable", type: "asset" },
+  { code: "1400", name: "Inventory — Goods & Materials", type: "asset" },
+  { code: "1500", name: "Property — Plots", type: "asset" },
+  { code: "1600", name: "Buildings & Improvements", type: "asset" },
+  { code: "1700", name: "Equipment & Tools", type: "asset" },
+  // Liabilities
+  { code: "2000", name: "Accounts Payable", type: "liability" },
+  { code: "2100", name: "Wages Payable", type: "liability" },
+  { code: "2200", name: "Taxes Payable", type: "liability" },
+  { code: "2300", name: "Loans Payable", type: "liability" },
+  { code: "2310", name: "Loans Payable — Guarantor", type: "liability" },
+  // Equity
+  { code: "3000", name: "Contributed Capital", type: "equity" },
+  { code: "3100", name: "Distributions & Draws", type: "equity" },
+  { code: "3900", name: "Opening Balance Equity", type: "equity" },
+  // Income
+  { code: "4000", name: "Sales Revenue", type: "income" },
+  { code: "4100", name: "Service Revenue", type: "income" },
+  { code: "4200", name: "Rental Income", type: "income" },
+  { code: "4800", name: "Gain on Sale of Assets", type: "income" },
+  { code: "4900", name: "Yield Income", type: "income" },
+  { code: "4950", name: "Uncategorized Income", type: "income" },
+  // Expenses
+  { code: "5000", name: "Payroll Expense", type: "expense" },
+  { code: "5100", name: "Contractor Fees", type: "expense" },
+  { code: "6000", name: "Platform & Transaction Fees", type: "expense" },
+  { code: "6100", name: "Software Subscription", type: "expense" },
+  { code: "6110", name: "Accounting & Bookkeeping Services", type: "expense" },
+  { code: "6200", name: "Rent Expense", type: "expense" },
+  { code: "6300", name: "Government Taxes & Fees", type: "expense" },
+  { code: "6400", name: "Materials & Supplies", type: "expense" },
+  { code: "6500", name: "Marketing & Advertising", type: "expense" },
+  { code: "6600", name: "Charity & Donations", type: "expense" },
+  { code: "6700", name: "Legal & Professional Fees", type: "expense" },
+  { code: "6750", name: "Interest Expense", type: "expense" },
+  { code: "6800", name: "Fines & Penalties", type: "expense" },
+  { code: "6900", name: "Uncategorized Expense", type: "expense" },
 ];
 
 async function ensureDefaultCategories(db: DB, firmId: string): Promise<void> {

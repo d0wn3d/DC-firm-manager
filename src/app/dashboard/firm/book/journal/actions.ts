@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { createServiceClient } from "@/lib/supabase/service";
-import { tagJournalEntry } from "@/lib/journal";
+import { tagJournalEntry, tagJournalEntries } from "@/lib/journal";
 
 /**
  * Tags happen optimistically on the client (see Journal.tsx), so this
@@ -18,5 +18,15 @@ export async function tagEntry(accountId: number, postingId: number, categoryId:
 
   const db = createServiceClient();
   await tagJournalEntry(db, session.firm.id, accountId, postingId, categoryId);
+  revalidatePath("/dashboard/firm/book/reports");
+}
+
+/** Same idea as tagEntry, but for however many rows are selected in the bulk bar — one round trip, not N. */
+export async function bulkTagEntries(entries: Array<{ accountId: number; postingId: number }>, categoryId: string | null) {
+  const session = await getSession();
+  if (!session?.firm) throw new Error("Not connected to a firm.");
+
+  const db = createServiceClient();
+  await tagJournalEntries(db, session.firm.id, entries, categoryId);
   revalidatePath("/dashboard/firm/book/reports");
 }

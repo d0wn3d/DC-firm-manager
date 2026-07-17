@@ -4,13 +4,14 @@ import { useState, useTransition } from "react";
 import { fetchReport } from "./actions";
 import type { ProfitAndLoss } from "@/lib/reports";
 
-type RangeKey = "this_month" | "last_month" | "this_quarter" | "ytd";
+type RangeKey = "this_month" | "last_month" | "this_quarter" | "ytd" | "lifetime";
 
 const RANGE_LABELS: Record<RangeKey, string> = {
   this_month: "This month",
   last_month: "Last month",
   this_quarter: "This quarter",
   ytd: "Year to date",
+  lifetime: "Lifetime",
 };
 
 function money(n: number) {
@@ -32,6 +33,12 @@ function rangeFor(key: RangeKey): [Date, Date] {
     }
     case "ytd":
       return [new Date(now.getFullYear(), 0, 1), now];
+    case "lifetime":
+      // Bounded by however far back the Journal's live-fetched window
+      // actually reaches (see PAGES_PER_ACCOUNT in lib/journal.ts) rather
+      // than a true all-time total — good enough until that becomes a
+      // local Treasury mirror instead of a live fetch.
+      return [new Date(2020, 0, 1), now];
     default:
       return [new Date(now.getFullYear(), now.getMonth(), 1), now];
   }
