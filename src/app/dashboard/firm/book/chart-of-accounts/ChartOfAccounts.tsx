@@ -18,15 +18,16 @@ function Row({ category }: { category: ChartAccount }) {
   const [code, setCode] = useState(category.code);
   const [name, setName] = useState(category.name);
   const [pending, startTransition] = useTransition();
+  const locked = category.auto_assign_only;
 
   function save() {
-    if (!code.trim() || !name.trim()) {
+    if (!name.trim()) {
       setCode(category.code);
       setName(category.name);
       setEditing(false);
       return;
     }
-    startTransition(() => renameCategory(category.id, { code: code.trim(), name: name.trim() }));
+    startTransition(() => renameCategory(category.id, { code: category.is_system ? category.code : code.trim(), name: name.trim() }));
     setEditing(false);
   }
 
@@ -36,7 +37,9 @@ function Row({ category }: { category: ChartAccount }) {
         <input
           value={code}
           onChange={(e) => setCode(e.target.value)}
-          className="w-16 rounded-sm border border-ink-600/25 bg-paper-100 px-2 py-1 font-mono text-xs text-ink-900 focus:outline-none"
+          disabled={category.is_system}
+          title={category.is_system ? "The code on a default category can't change — the auto-tag rules and reconciliation key off it." : undefined}
+          className="w-16 rounded-sm border border-ink-600/25 bg-paper-100 px-2 py-1 font-mono text-xs text-ink-900 focus:outline-none disabled:opacity-50"
         />
         <input
           value={name}
@@ -52,18 +55,36 @@ function Row({ category }: { category: ChartAccount }) {
 
   return (
     <li className="flex items-center justify-between gap-3 border-b border-ink-900/10 px-5 py-2.5 last:border-b-0">
-      <button onClick={() => setEditing(true)} className="flex flex-1 items-center gap-3 text-left">
+      <button
+        onClick={() => !locked && setEditing(true)}
+        disabled={locked}
+        className="flex flex-1 items-center gap-3 text-left disabled:cursor-default"
+      >
         <span className="font-mono text-xs text-ink-700/50">{category.code}</span>
         <span className="text-sm text-ink-900">{category.name}</span>
-        {category.is_system && <span className="font-mono text-[0.6rem] text-ink-700/40 uppercase">default</span>}
+        {category.is_system && (
+          <span className="font-mono text-[0.6rem] text-ink-700/40 uppercase" title="Part of the default chart of accounts">
+            system
+          </span>
+        )}
+        {locked && (
+          <span
+            className="font-mono text-[0.6rem] text-brass-600 uppercase"
+            title="Assigned automatically from transaction memos — not manually editable"
+          >
+            auto
+          </span>
+        )}
       </button>
-      <button
-        onClick={() => startTransition(() => archiveCategory(category.id))}
-        disabled={pending}
-        className="font-mono text-[0.6875rem] text-ink-700/40 uppercase hover:text-rust-500 disabled:opacity-50"
-      >
-        Archive
-      </button>
+      {!locked && (
+        <button
+          onClick={() => startTransition(() => archiveCategory(category.id))}
+          disabled={pending}
+          className="font-mono text-[0.6875rem] text-ink-700/40 uppercase hover:text-rust-500 disabled:opacity-50"
+        >
+          Archive
+        </button>
+      )}
     </li>
   );
 }

@@ -267,6 +267,8 @@ export interface Database {
           type: "asset" | "liability" | "equity" | "income" | "expense";
           parent_id: string | null;
           is_system: boolean;
+          auto_assign_only: boolean;
+          normal_balance: "debit" | "credit";
           archived: boolean;
           created_at: string;
         };
@@ -278,6 +280,8 @@ export interface Database {
           type: "asset" | "liability" | "equity" | "income" | "expense";
           parent_id?: string | null;
           is_system?: boolean;
+          auto_assign_only?: boolean;
+          normal_balance?: "debit" | "credit";
           archived?: boolean;
           created_at?: string;
         };

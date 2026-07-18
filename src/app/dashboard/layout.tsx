@@ -4,18 +4,8 @@ import { getSession } from "@/lib/auth";
 import { createServiceClient } from "@/lib/supabase/service";
 import { NavTabs } from "./NavTabs";
 import { SyncButton } from "./inventory/SyncButton";
+import { SyncedAgo } from "./SyncedAgo";
 import { signOut } from "./actions";
-
-function timeAgo(iso: string | null) {
-  if (!iso) return "never";
-  const ms = Date.now() - new Date(iso).getTime();
-  const mins = Math.round(ms / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.round(hours / 24)}d ago`;
-}
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
@@ -66,9 +56,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <div className="flex flex-wrap items-center justify-between gap-3">
           <NavTabs />
           <div className="flex items-center gap-3">
-            <span className="font-mono text-xs text-paper-300/50">
-              Synced {timeAgo(lastPoll?.polled_at ?? null)}
-            </span>
+            <SyncedAgo iso={lastPoll?.polled_at ?? null} />
             <SyncButton />
           </div>
         </div>

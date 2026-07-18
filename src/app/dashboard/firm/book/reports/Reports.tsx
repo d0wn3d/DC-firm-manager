@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { fetchReport } from "./actions";
-import type { ProfitAndLoss } from "@/lib/reports";
+import type { BooksReport } from "@/lib/reports";
 
 type RangeKey = "this_month" | "last_month" | "this_quarter" | "ytd" | "lifetime";
 
@@ -59,12 +59,51 @@ function Bar({ label, value, max, tone }: { label: string; value: number; max: n
   );
 }
 
+function TrialBalanceTable({ trialBalance }: { trialBalance: BooksReport["trialBalance"] }) {
+  if (trialBalance.lines.length === 0) {
+    return <p className="text-sm text-ink-700/50">No entries this range.</p>;
+  }
+
+  return (
+    <div className="ledger-sheet overflow-hidden rounded-sm border border-ink-700">
+      <div className="hidden grid-cols-[0.6fr_1.6fr_1fr_1fr] gap-3 border-b border-ink-900/10 px-5 py-2.5 font-mono text-[0.6875rem] tracking-[0.1em] text-ink-700/60 uppercase sm:grid">
+        <span>Code</span>
+        <span>Account</span>
+        <span className="text-right">Debit</span>
+        <span className="text-right">Credit</span>
+      </div>
+      <ul>
+        {trialBalance.lines.map((line) => (
+          <li
+            key={line.code}
+            className="flex flex-col gap-1 border-b border-ink-900/10 px-5 py-2.5 last:border-b-0 sm:grid sm:grid-cols-[0.6fr_1.6fr_1fr_1fr] sm:items-center sm:gap-3"
+          >
+            <span className="font-mono text-xs text-ink-700/50">{line.code}</span>
+            <span className="text-sm text-ink-900">{line.name}</span>
+            <span className="text-right font-mono text-sm text-ink-900">{line.debit > 0 ? money(line.debit) : "—"}</span>
+            <span className="text-right font-mono text-sm text-ink-900">{line.credit > 0 ? money(line.credit) : "—"}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="flex items-center justify-between border-t border-ink-900/20 bg-ink-900/5 px-5 py-3">
+        <span className="font-mono text-xs text-ink-700/70 uppercase">
+          {trialBalance.balanced ? "✓ Balanced" : "⚠ Out of balance — please report this"}
+        </span>
+        <div className="flex gap-6 font-mono text-sm font-semibold text-ink-900">
+          <span>{money(trialBalance.totalDebit)}</span>
+          <span>{money(trialBalance.totalCredit)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Reports({
   initialReport,
   hasAccounts,
   snapshot,
 }: {
-  initialReport: ProfitAndLoss | null;
+  initialReport: BooksReport | null;
   hasAccounts: boolean;
   snapshot: { cash: number; inventory: number };
 }) {
@@ -89,8 +128,9 @@ export function Reports({
     );
   }
 
-  const maxLine = report
-    ? Math.max(1, ...report.income.map((l) => l.total), ...report.expense.map((l) => l.total))
+  const pAndL = report?.profitAndLoss;
+  const maxLine = pAndL
+    ? Math.max(1, ...pAndL.income.map((l) => l.total), ...pAndL.expense.map((l) => l.total))
     : 1;
 
   return (
@@ -130,7 +170,7 @@ export function Reports({
         </div>
       </section>
 
-      {!report || pending ? (
+      {!report || !pAndL || pending ? (
         <div className="ledger-sheet rounded-sm border border-ink-700 p-10 text-center">
           <p className="text-sm text-ink-700/60">{pending ? "Recalculating…" : "No data for this range."}</p>
         </div>
@@ -138,11 +178,11 @@ export function Reports({
         <>
           <section className="ledger-sheet rounded-sm border border-ink-700 p-8">
             <p className="mb-1 font-mono text-[0.6875rem] tracking-[0.15em] text-ink-700/60 uppercase">Net income</p>
-            <p className={`font-display text-5xl ${report.net >= 0 ? "text-moss-500" : "text-rust-500"}`}>
-              {money(report.net)}
+            <p className={`font-display text-5xl ${pAndL.net >= 0 ? "text-moss-500" : "text-rust-500"}`}>
+              {money(pAndL.net)}
             </p>
             <p className="mt-2 text-xs text-ink-700/60">
-              {money(report.totalIncome)} in income, {money(report.totalExpense)} in expense —{" "}
+              {money(pAndL.totalIncome)} in income, {money(pAndL.totalExpense)} in expense —{" "}
               {RANGE_LABELS[range].toLowerCase()}.
             </p>
           </section>
@@ -150,36 +190,43 @@ export function Reports({
           <div className="grid gap-4 sm:grid-cols-2">
             <section className="ledger-sheet rounded-sm border border-ink-700 p-6">
               <p className="mb-3 font-mono text-[0.6875rem] tracking-[0.15em] text-moss-500 uppercase">Income</p>
-              {report.income.length === 0 ? (
+              {pAndL.income.length === 0 ? (
                 <p className="text-sm text-ink-700/50">No categorized income this range.</p>
               ) : (
-                report.income.map((line) => (
+                pAndL.income.map((line) => (
                   <Bar key={line.categoryId} label={line.name} value={line.total} max={maxLine} tone="bg-moss-400" />
                 ))
               )}
             </section>
             <section className="ledger-sheet rounded-sm border border-ink-700 p-6">
               <p className="mb-3 font-mono text-[0.6875rem] tracking-[0.15em] text-rust-500 uppercase">Expense</p>
-              {report.expense.length === 0 ? (
+              {pAndL.expense.length === 0 ? (
                 <p className="text-sm text-ink-700/50">No categorized expense this range.</p>
               ) : (
-                report.expense.map((line) => (
+                pAndL.expense.map((line) => (
                   <Bar key={line.categoryId} label={line.name} value={line.total} max={maxLine} tone="bg-rust-400" />
                 ))
               )}
             </section>
           </div>
 
-          {report.uncategorizedCount > 0 && (
+          {pAndL.uncategorizedCount > 0 && (
             <div className="rounded-sm border border-brass-400/40 bg-brass-400/10 px-4 py-3 text-xs text-brass-700">
-              {report.uncategorizedCount} uncategorized {report.uncategorizedCount === 1 ? "entry" : "entries"} (
-              {money(report.uncategorizedTotal)}) excluded from this report —{" "}
+              {pAndL.uncategorizedCount} uncategorized {pAndL.uncategorizedCount === 1 ? "entry" : "entries"} (
+              {money(pAndL.uncategorizedTotal)}) excluded from Income/Expense above —{" "}
               <a href="/dashboard/firm/book/journal" className="underline underline-offset-2">
                 tag them in the Journal
               </a>
               .
             </div>
           )}
+
+          <section>
+            <p className="mb-3 font-mono text-[0.6875rem] tracking-[0.15em] text-paper-300/60 uppercase">
+              Trial balance — {RANGE_LABELS[range].toLowerCase()}
+            </p>
+            <TrialBalanceTable trialBalance={report.trialBalance} />
+          </section>
         </>
       )}
     </div>

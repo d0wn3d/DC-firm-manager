@@ -20,6 +20,11 @@ function rowKey(row: Pick<JournalRow, "accountId" | "postingId">) {
   return `${row.accountId}:${row.postingId}`;
 }
 
+/** 4000/6400 are auto-tagged only — never offered as a fresh pick, but still shown (marked) if a row already carries one, so the select doesn't render blank. */
+function selectableFor(categories: ChartAccount[], currentCategoryId: string | null) {
+  return categories.filter((c) => !c.auto_assign_only || c.id === currentCategoryId);
+}
+
 function CategoryPicker({
   row,
   categories,
@@ -30,6 +35,7 @@ function CategoryPicker({
   onChange: (categoryId: string | null) => void;
 }) {
   const [pending, startTransition] = useTransition();
+  const options = selectableFor(categories, row.categoryId);
 
   return (
     <select
@@ -45,9 +51,10 @@ function CategoryPicker({
       }`}
     >
       <option value="">Uncategorized</option>
-      {categories.map((c) => (
+      {options.map((c) => (
         <option key={c.id} value={c.id}>
           {c.code} · {c.name}
+          {c.auto_assign_only ? " (auto)" : ""}
         </option>
       ))}
     </select>
@@ -85,6 +92,7 @@ export function Journal({
   const uncategorizedCount = feed.filter((r) => r.categoryId === null).length;
   const pageKeys = pageRows.map(rowKey);
   const allPageSelected = pageKeys.length > 0 && pageKeys.every((k) => selected.has(k));
+  const bulkOptions = selectableFor(categories, null);
 
   function handleTag(row: JournalRow, categoryId: string | null) {
     setFeed((prev) => prev.map((r) => (rowKey(r) === rowKey(row) ? { ...r, categoryId } : r)));
@@ -192,7 +200,7 @@ export function Journal({
             className="rounded-sm border border-ink-600/25 bg-paper-100 px-2 py-1 font-mono text-xs text-ink-900 focus:outline-none"
           >
             <option value="">Uncategorized</option>
-            {categories.map((c) => (
+            {bulkOptions.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.code} · {c.name}
               </option>

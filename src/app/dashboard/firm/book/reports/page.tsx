@@ -3,7 +3,7 @@ import { getSession } from "@/lib/auth";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getFirmAccounts } from "@/lib/treasury";
 import { getChartOfAccounts } from "@/lib/accounts";
-import { getProfitAndLoss } from "@/lib/reports";
+import { getBooksReport } from "@/lib/reports";
 import { getWarehouseValuation } from "@/lib/valuation";
 import { Reports } from "./Reports";
 
@@ -27,7 +27,7 @@ export default async function ReportsPage() {
   const now = new Date();
   const report =
     accounts.length > 0
-      ? await getProfitAndLoss(db, session.firm.treasury_jwt, session.firm.id, accounts, categories, startOfMonth(now), now)
+      ? await getBooksReport(db, session.firm.treasury_jwt, session.firm.id, accounts, categories, startOfMonth(now), now)
       : null;
 
   const cashTotal = accounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);

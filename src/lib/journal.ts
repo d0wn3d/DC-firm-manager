@@ -26,15 +26,16 @@ const PAGES_PER_ACCOUNT = 3;
 const PAGE_SIZE = 100;
 
 /**
- * A shop purchase reads, from the firm's account, as money leaving with a
- * memo describing a player selling items to the firm. Matched loosely
- * (just "sold ... to") plus a negative-amount check as a safety net, since
- * the exact wording Treasury sends for this isn't confirmed — worth
- * checking against a few real transaction memos and tightening the regex
- * if it's over- or under-matching.
+ * Confirmed against real transaction memos: a ChestShop sale reads as
+ * "Player X bought x1 ITEM from FIRM Corporate Account" (money into the
+ * firm), and a purchase from a player reads as "Player X sold x1 ITEM from
+ * FIRM Corporate Account" (money out). The amount-sign check is a safety
+ * net on top of the wording match, not a substitute for it.
  */
-const MATERIALS_PURCHASE_PATTERN = /\bsold\b.{0,80}\bto\b/i;
-const MATERIALS_CATEGORY_CODE = "6400"; // Materials & Supplies
+const AUTO_TAG_RULES: Array<{ pattern: RegExp; categoryCode: string; sign: "positive" | "negative" }> = [
+  { pattern: /\bbought\b.+\bfrom\b.+\bcorporate account\b/i, categoryCode: "4000", sign: "positive" }, // Sales Revenue
+  { pattern: /\bsold\b.+\bfrom\b.+\bcorporate account\b/i, categoryCode: "6400", sign: "negative" }, // Materials & Supplies
+];
 
 /**
  * Fetches one account's transaction history. Page 1 has to be fetched
@@ -74,11 +75,11 @@ async function fetchAccountRows(jwt: string, account: TreasuryAccount): Promise<
  * by (account_id, posting_id). Treasury stays the system of record for the
  * transaction itself — journal_entries only ever stores the label.
  *
- * Also auto-tags anything matching the materials-purchase pattern that
- * isn't tagged yet, so it never piles up in Uncategorized in the first
- * place. This runs on every read rather than at poll time, since the poll
- * job only syncs shop/stock data — transactions are always live-fetched,
- * there's no local mirror to hook a sync step into yet.
+ * Also runs the auto-tag rules against anything not yet tagged, so shop
+ * sales and materials purchases land on 4000/6400 without ever passing
+ * through Uncategorized. Runs on every read rather than at poll time,
+ * since the poll job only syncs shop/stock data — transactions are always
+ * live-fetched, there's no local mirror to hook a sync step into yet.
  */
 export async function getJournalFeed(
   db: DB,
@@ -100,19 +101,26 @@ export async function getJournalFeed(
     row.categoryId = tagByKey.get(`${row.accountId}:${row.postingId}`) ?? null;
   }
 
-  const materialsCategory = categories.find((c) => c.code === MATERIALS_CATEGORY_CODE);
-  if (materialsCategory) {
-    const autoTargets = flat.filter(
-      (row) => row.categoryId === null && Number(row.amount) < 0 && MATERIALS_PURCHASE_PATTERN.test(row.memo ?? ""),
-    );
-    if (autoTargets.length > 0) {
+  for (const rule of AUTO_TAG_RULES) {
+    const category = categories.find((c) => c.code === rule.categoryCode);
+    if (!category) continue;
+
+    const targets = flat.filter((row) => {
+      if (row.categoryId !== null) return false;
+      const amount = Number(row.amount) || 0;
+      if (rule.sign === "positive" && amount < 0) return false;
+      if (rule.sign === "negative" && amount >= 0) return false;
+      return rule.pattern.test(row.memo ?? "");
+    });
+
+    if (targets.length > 0) {
       await tagJournalEntries(
         db,
         firmId,
-        autoTargets.map((r) => ({ accountId: r.accountId, postingId: r.postingId })),
-        materialsCategory.id,
+        targets.map((r) => ({ accountId: r.accountId, postingId: r.postingId })),
+        category.id,
       );
-      for (const row of autoTargets) row.categoryId = materialsCategory.id;
+      for (const row of targets) row.categoryId = category.id;
     }
   }
 
@@ -130,7 +138,7 @@ export async function tagJournalEntry(
   return tagJournalEntries(db, firmId, [{ accountId, postingId }], categoryId);
 }
 
-/** Same as tagJournalEntry but for many transactions in one round trip — what the Journal's bulk-select bar calls. */
+/** Same as tagJournalEntry but for many transactions in one round trip — what the Journal's bulk-select bar (and the auto-tag rules above) call. */
 export async function tagJournalEntries(
   db: DB,
   firmId: string,
