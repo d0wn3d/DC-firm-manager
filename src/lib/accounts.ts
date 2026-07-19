@@ -1,5 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { unstable_cache, revalidateTag } from "next/cache";
+import { createServiceClient } from "./supabase/service";
 import type { Database } from "./supabase/types";
 import type { AccountType } from "./accountTypes";
 
@@ -83,14 +85,22 @@ const AUTO_ASSIGN_ONLY_CODES = DEFAULT_CATEGORIES.filter((c) => c.autoAssignOnly
  * before auto_assign_only/normal_balance existed) would never receive the
  * new codes or the retroactive lock on 4000/6400. This runs on every read;
  * it's a cheap no-op once a firm is caught up.
+ *
+ * Both writes below check their error explicitly and throw rather than
+ * swallow it — an earlier version didn't, which meant a missing migration
+ * (e.g. normal_balance/auto_assign_only columns not existing yet) failed
+ * silently: the insert would error, nothing surfaced it, and the page just
+ * rendered whatever was already there, looking like accounts had "gone
+ * missing" rather than "never actually got inserted."
  */
 async function ensureDefaultCategories(db: DB, firmId: string): Promise<void> {
   const { data: existing } = await db.from("chart_of_accounts").select("code").eq("firm_id", firmId);
   const existingCodes = new Set((existing ?? []).map((c) => c.code));
   const missing = DEFAULT_CATEGORIES.filter((c) => !existingCodes.has(c.code));
+  let changed = false;
 
   if (missing.length > 0) {
-    await db.from("chart_of_accounts").insert(
+    const { error } = await db.from("chart_of_accounts").insert(
       missing.map((c) => ({
         firm_id: firmId,
         code: c.code,
@@ -101,30 +111,70 @@ async function ensureDefaultCategories(db: DB, firmId: string): Promise<void> {
         auto_assign_only: c.autoAssignOnly ?? false,
       })),
     );
+    if (error) {
+      throw new Error(
+        `Couldn't seed default chart of accounts (${error.message}). If this mentions a missing column, MIGRATION_book_v2.sql hasn't been run yet.`,
+      );
+    }
+    changed = true;
   }
 
   if (AUTO_ASSIGN_ONLY_CODES.length > 0) {
-    await db
+    const { data: patched, error } = await db
       .from("chart_of_accounts")
       .update({ auto_assign_only: true })
       .eq("firm_id", firmId)
       .in("code", AUTO_ASSIGN_ONLY_CODES)
-      .eq("auto_assign_only", false);
+      .eq("auto_assign_only", false)
+      .select("id");
+    if (error) {
+      throw new Error(`Couldn't patch auto_assign_only on existing categories (${error.message}).`);
+    }
+    if (patched && patched.length > 0) changed = true;
   }
+
+  // Only bust the cache when something actually changed — the ordinary
+  // steady-state call (firm already fully reconciled) stays a cheap read
+  // plus a no-op update, and doesn't defeat the 60s cache below it.
+  if (changed) revalidateTag(chartOfAccountsCacheTag(firmId));
 }
+
+export function chartOfAccountsCacheTag(firmId: string): string {
+  return `chart-of-accounts-${firmId}`;
+}
+
+/**
+ * The list itself barely changes between page loads, so it's cached for
+ * 60s and invalidated immediately on any create/rename/archive (see
+ * chart-of-accounts/actions.ts). Deliberately created as its own Supabase
+ * client rather than reusing the one passed into getChartOfAccounts below
+ * — unstable_cache needs a stable, serializable argument list to build a
+ * cache key from, and a client instance isn't one.
+ */
+const selectCategoriesCached = (firmId: string) =>
+  unstable_cache(
+    async () => {
+      const db = createServiceClient();
+      const { data } = await db
+        .from("chart_of_accounts")
+        .select("*")
+        .eq("firm_id", firmId)
+        .eq("archived", false)
+        .order("code");
+      return data ?? [];
+    },
+    [`chart-of-accounts-select-${firmId}`],
+    { tags: [chartOfAccountsCacheTag(firmId)], revalidate: 60 },
+  )();
 
 /** Every non-archived category for a firm, reconciling against the current defaults first. */
 export async function getChartOfAccounts(db: DB, firmId: string): Promise<ChartAccount[]> {
+  // Reconciliation still runs live on every call — it's a cheap, already
+  // firm-scoped read plus an insert/update only when something's actually
+  // missing, and it needs to stay correct rather than cached, since it's
+  // what backfills new default categories for firms who haven't seen them.
   await ensureDefaultCategories(db, firmId);
-
-  const { data } = await db
-    .from("chart_of_accounts")
-    .select("*")
-    .eq("firm_id", firmId)
-    .eq("archived", false)
-    .order("code");
-
-  return data ?? [];
+  return selectCategoriesCached(firmId);
 }
 
 export async function createCategory(

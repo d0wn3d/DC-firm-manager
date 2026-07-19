@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const TABS = [
   { href: "/dashboard/firm/overview", label: "Overview" },
+  { href: "/dashboard/firm/analytics", label: "Analytics" },
   { href: "/dashboard/firm/wallet", label: "Wallet" },
   { href: "/dashboard/firm/employees", label: "Employees" },
   // Points straight at the Journal sub-tab instead of /book, which just

@@ -69,7 +69,7 @@ export interface BooksReport {
  * practice most shop activity never reaches Uncategorized at all now,
  * since the auto-tag rules in lib/journal.ts catch it on the way in.
  */
-function computeProfitAndLoss(
+export function computeProfitAndLoss(
   feed: JournalRow[],
   categories: ChartAccount[],
   rangeStart: Date,
@@ -163,7 +163,7 @@ function computeProfitAndLoss(
  * Stockbook's custodial balance), which needs its own auto-tag rule rather
  * than being treated as income or expense.
  */
-function computeTrialBalance(feed: JournalRow[], categories: ChartAccount[], rangeStart: Date, rangeEnd: Date): TrialBalance {
+export function computeTrialBalance(feed: JournalRow[], categories: ChartAccount[], rangeStart: Date, rangeEnd: Date): TrialBalance {
   const startMs = rangeStart.getTime();
   const endMs = rangeEnd.getTime();
 

@@ -70,7 +70,7 @@ function Row({ category }: { category: ChartAccount }) {
         {locked && (
           <span
             className="font-mono text-[0.6rem] text-brass-600 uppercase"
-            title="Assigned automatically from transaction memos — not manually editable"
+            title="Auto-tagged by default from transaction memos. Can still be picked manually on a transaction — this definition just can't be renamed or archived."
           >
             auto
           </span>

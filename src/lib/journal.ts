@@ -29,12 +29,15 @@ const PAGE_SIZE = 100;
  * Confirmed against real transaction memos: a ChestShop sale reads as
  * "Player X bought x1 ITEM from FIRM Corporate Account" (money into the
  * firm), and a purchase from a player reads as "Player X sold x1 ITEM from
- * FIRM Corporate Account" (money out). The amount-sign check is a safety
- * net on top of the wording match, not a substitute for it.
+ * FIRM Corporate Account" (money out). Matched on just "bought/sold ...
+ * from" rather than requiring the full "Corporate Account" suffix too —
+ * some real transactions weren't matching the stricter version, and the
+ * amount-sign check below is still a safety net against false positives
+ * from unrelated "sold ... from" phrasing.
  */
 const AUTO_TAG_RULES: Array<{ pattern: RegExp; categoryCode: string; sign: "positive" | "negative" }> = [
-  { pattern: /\bbought\b.+\bfrom\b.+\bcorporate account\b/i, categoryCode: "4000", sign: "positive" }, // Sales Revenue
-  { pattern: /\bsold\b.+\bfrom\b.+\bcorporate account\b/i, categoryCode: "6400", sign: "negative" }, // Materials & Supplies
+  { pattern: /\bbought\b.+\bfrom\b/i, categoryCode: "4000", sign: "positive" }, // Sales Revenue
+  { pattern: /\bsold\b.+\bfrom\b/i, categoryCode: "6400", sign: "negative" }, // Materials & Supplies
 ];
 
 /**
@@ -75,6 +78,12 @@ async function fetchAccountRows(jwt: string, account: TreasuryAccount): Promise<
  * by (account_id, posting_id). Treasury stays the system of record for the
  * transaction itself — journal_entries only ever stores the label.
  *
+ * The tag lookup is scoped to postingIds actually present in this fetch
+ * window (via `.in()`) rather than pulling the firm's entire tag history —
+ * that history only grows, and every one of those older rows is
+ * irrelevant here anyway since the feed itself is bounded to the same
+ * live-fetched window.
+ *
  * Also runs the auto-tag rules against anything not yet tagged, so shop
  * sales and materials purchases land on 4000/6400 without ever passing
  * through Uncategorized. Runs on every read rather than at poll time,
@@ -91,10 +100,16 @@ export async function getJournalFeed(
   const perAccount = await Promise.all(accounts.map((account) => fetchAccountRows(jwt, account)));
   const flat = perAccount.flat();
 
+  if (flat.length === 0) return [];
+
   const { data: tags } = await db
     .from("journal_entries")
     .select("account_id, posting_id, category_id")
-    .eq("firm_id", firmId);
+    .eq("firm_id", firmId)
+    .in(
+      "posting_id",
+      flat.map((r) => r.postingId),
+    );
 
   const tagByKey = new Map((tags ?? []).map((t) => [`${t.account_id}:${t.posting_id}`, t.category_id]));
   for (const row of flat) {
