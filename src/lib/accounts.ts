@@ -1,7 +1,5 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { unstable_cache, revalidateTag } from "next/cache";
-import { createServiceClient } from "./supabase/service";
 import type { Database } from "./supabase/types";
 import type { AccountType } from "./accountTypes";
 
@@ -97,7 +95,6 @@ async function ensureDefaultCategories(db: DB, firmId: string): Promise<void> {
   const { data: existing } = await db.from("chart_of_accounts").select("code").eq("firm_id", firmId);
   const existingCodes = new Set((existing ?? []).map((c) => c.code));
   const missing = DEFAULT_CATEGORIES.filter((c) => !existingCodes.has(c.code));
-  let changed = false;
 
   if (missing.length > 0) {
     const { error } = await db.from("chart_of_accounts").insert(
@@ -116,65 +113,43 @@ async function ensureDefaultCategories(db: DB, firmId: string): Promise<void> {
         `Couldn't seed default chart of accounts (${error.message}). If this mentions a missing column, MIGRATION_book_v2.sql hasn't been run yet.`,
       );
     }
-    changed = true;
   }
 
   if (AUTO_ASSIGN_ONLY_CODES.length > 0) {
-    const { data: patched, error } = await db
+    const { error } = await db
       .from("chart_of_accounts")
       .update({ auto_assign_only: true })
       .eq("firm_id", firmId)
       .in("code", AUTO_ASSIGN_ONLY_CODES)
-      .eq("auto_assign_only", false)
-      .select("id");
+      .eq("auto_assign_only", false);
     if (error) {
       throw new Error(`Couldn't patch auto_assign_only on existing categories (${error.message}).`);
     }
-    if (patched && patched.length > 0) changed = true;
   }
-
-  // Only bust the cache when something actually changed — the ordinary
-  // steady-state call (firm already fully reconciled) stays a cheap read
-  // plus a no-op update, and doesn't defeat the 60s cache below it.
-  if (changed) revalidateTag(chartOfAccountsCacheTag(firmId));
-}
-
-export function chartOfAccountsCacheTag(firmId: string): string {
-  return `chart-of-accounts-${firmId}`;
 }
 
 /**
- * The list itself barely changes between page loads, so it's cached for
- * 60s and invalidated immediately on any create/rename/archive (see
- * chart-of-accounts/actions.ts). Deliberately created as its own Supabase
- * client rather than reusing the one passed into getChartOfAccounts below
- * — unstable_cache needs a stable, serializable argument list to build a
- * cache key from, and a client instance isn't one.
+ * Every non-archived category for a firm, reconciling against the current
+ * defaults first. Not cached — an earlier version wrapped the select in
+ * unstable_cache, but Next 16 changed revalidateTag to require a second
+ * (cacheLife profile) argument, and more importantly, the reconciliation
+ * above can run from a Server Component's render path (not just Server
+ * Actions), where Next's cache-mutation APIs aren't meant to be called at
+ * all. Given this table is small and always queried by an indexed
+ * firm_id, an uncached read here is not the actual bottleneck — see the
+ * note on Supabase free-tier speed in CHANGES.md.
  */
-const selectCategoriesCached = (firmId: string) =>
-  unstable_cache(
-    async () => {
-      const db = createServiceClient();
-      const { data } = await db
-        .from("chart_of_accounts")
-        .select("*")
-        .eq("firm_id", firmId)
-        .eq("archived", false)
-        .order("code");
-      return data ?? [];
-    },
-    [`chart-of-accounts-select-${firmId}`],
-    { tags: [chartOfAccountsCacheTag(firmId)], revalidate: 60 },
-  )();
-
-/** Every non-archived category for a firm, reconciling against the current defaults first. */
 export async function getChartOfAccounts(db: DB, firmId: string): Promise<ChartAccount[]> {
-  // Reconciliation still runs live on every call — it's a cheap, already
-  // firm-scoped read plus an insert/update only when something's actually
-  // missing, and it needs to stay correct rather than cached, since it's
-  // what backfills new default categories for firms who haven't seen them.
   await ensureDefaultCategories(db, firmId);
-  return selectCategoriesCached(firmId);
+
+  const { data } = await db
+    .from("chart_of_accounts")
+    .select("*")
+    .eq("firm_id", firmId)
+    .eq("archived", false)
+    .order("code");
+
+  return data ?? [];
 }
 
 export async function createCategory(
